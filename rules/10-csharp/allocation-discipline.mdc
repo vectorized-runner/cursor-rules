@@ -1,0 +1,67 @@
+---
+description: Allocation discipline — no closures, boxing, params, or string churn in hot paths
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Allocation Discipline
+
+Our games are GC-constrained (WebGL). Every managed allocation in a per-frame or per-message path is a future GC spike. Minimize allocations; justify any you add.
+
+## Closures and delegates
+
+A lambda capturing a local or `this` allocates a closure object **every call**.
+
+```csharp
+// ❌ BAD — closure allocated per call
+button.onClick.AddListener(() => Fire(currentTarget));
+units.Sort((a, b) => a.Score.CompareTo(b.Score));
+
+// ✅ GOOD — cached delegate, no capture
+private static readonly Comparison<Unit> ByScore = (a, b) => a.Score.CompareTo(b.Score);
+units.Sort(ByScore);
+
+// ✅ GOOD — method group registered once in Awake, unregistered in OnDestroy
+button.onClick.AddListener(OnFireClicked);
+```
+
+- Cache comparison/callback delegates in `static readonly` fields when they capture nothing.
+- Register listeners once (Awake/Start), not per frame.
+
+## Boxing
+
+Boxing allocates every time a value type becomes `object` or an interface.
+
+```csharp
+// ❌ BAD — boxes
+object key = someEnum;                        // enum → object
+Debug.Log("Count: " + count);                 // int → object via concat
+IComparable c = myStruct;                     // struct → interface
+string.Format("{0}", score);                  // int → object
+
+// ✅ GOOD
+Debug.Log($"Count: {count.ToString()}");      // still allocates the string — keep out of hot paths entirely
+EqualityComparer<MyEnum>.Default.Equals(a, b); // no boxing for enum comparison in generics
+```
+
+- Never use enums or structs as `Dictionary` keys without an `IEqualityComparer` (default comparer boxes on older runtimes) — or use `int` keys.
+- Don't pass structs through `object`/interface parameters in hot code.
+
+## `params` and strings
+
+- `params T[]` allocates an array per call — use explicit overloads for 1–3 args in hot paths.
+- No string concatenation, `string.Format`, or `$"..."` interpolation in per-frame code. Build UI strings only when the value **changes**, not every frame.
+
+## Collections
+
+- Reuse collections: allocate once, `Clear()` per use. No `new List<T>()` inside `Update` or per-message handlers.
+- Pre-size collections when the count is known: `new List<T>(64)`, `new Dictionary<K,V>(capacity)`.
+- Prefer `foreach` only on arrays and `List<T>` (struct enumerators, no alloc); `foreach` over an interface reference (`IEnumerable<T>`) boxes the enumerator — use `for`.
+
+## Agent checklist
+
+- [ ] No capturing lambdas in per-frame or per-message code; delegates cached
+- [ ] No boxing: no struct/enum → object/interface conversions in hot paths
+- [ ] No `params` calls, string concat, or interpolation in per-frame code
+- [ ] Collections reused with `Clear()`, pre-sized where count is known
+- [ ] Every new allocation in gameplay code is justified in the change description

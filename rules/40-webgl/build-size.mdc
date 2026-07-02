@@ -1,0 +1,53 @@
+---
+description: WebGL build size — legacy input only, no casual package deps, IL2CPP bloat awareness
+globs: **/*.cs
+alwaysApply: false
+---
+
+# WebGL: Build Size
+
+WebGL builds are downloaded before every session. Every megabyte of wasm/data is load time and bounce rate. Code contributes through IL2CPP output; packages and assets through data.
+
+## Input: legacy Input Manager only
+
+The **Input System package is not installed and must not be added** — it costs build size and our games don't need it. Projects use Input Manager (Old): `activeInputHandler: 0`.
+
+- No `using UnityEngine.InputSystem;`, no `Unity.InputSystem` asmdef reference
+- No `Mouse.current`, `Keyboard.current`, `InputAction`, `PlayerInput`
+
+```csharp
+// ✅ GOOD — legacy input
+if (Input.GetMouseButtonDown(0))
+{
+    var ray = _camera.ScreenPointToRay(Input.mousePosition);
+}
+
+if (Input.GetKeyDown(KeyCode.Escape)) { ... }
+```
+
+UI clicks go through `EventSystem` + `GraphicRaycaster` — no manual polling for standard buttons.
+
+## Package discipline
+
+- **No new package dependencies without a size justification.** Every package drags code (IL2CPP), often transitive deps, sometimes streaming assets. State the cost/benefit in the PR when adding one.
+- Remove packages that are no longer used; check `Packages/manifest.json` during cleanup passes.
+- Prefer writing 200 lines of project code over importing a 2 MB general-purpose library for one function.
+
+## IL2CPP code-size traps
+
+- **Generics explode**: every `SomeGeneric<ValueType>` instantiation generates a full copy of the code. Avoid deeply generic utility layers; prefer concrete types in gameplay code.
+- **Reflection defeats stripping** (see no-reflection rule) — reflected code forces IL2CPP to keep everything reachable.
+- Keep **Managed Stripping Level: High**. If stripping removes something needed (almost always caused by reflection/serialization), fix the code to reference it statically; `link.xml` entries are a last resort and each one must carry a comment explaining why.
+
+## Asset hygiene (when touching import settings)
+
+- Textures: correct max size + compression per platform; no 4K textures for UI icons.
+- Audio: compressed (Vorbis) for music; short SFX can be decompress-on-load; mono where stereo adds nothing.
+- Strip unused scenes/resources from build settings; anything under `Resources/` ships whether used or not.
+
+## Agent checklist
+
+- [ ] No Input System package or `UnityEngine.InputSystem` usage — legacy `Input` only
+- [ ] No new package deps without explicit size justification
+- [ ] No new deeply generic layers or reflection that defeats stripping
+- [ ] `link.xml` additions are last-resort and commented

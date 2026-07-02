@@ -1,0 +1,60 @@
+---
+description: Unity.Collections over managed allocation for bulk data — allocator and Dispose rules
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Unity.Collections over Managed Allocation
+
+For bulk data buffers, prefer `Unity.Collections` (`NativeArray<T>`, `NativeList<T>`, `NativeHashMap<K,V>`) over `new T[]` / `List<T>` when the data is large, processed in tight loops, or interfaces with jobs/physics/mesh APIs. Native containers live outside the GC heap — they never contribute to GC pressure or collection pauses.
+
+```csharp
+// ❌ BAD — managed array allocated per rebuild, feeds the GC
+private void RebuildMesh()
+{
+    var vertices = new Vector3[_count * 4];
+    ...
+}
+
+// ✅ GOOD — native buffer, allocated once, disposed with the owner
+private NativeArray<float3> _vertices;
+
+private void Awake()
+{
+    _vertices = new NativeArray<float3>(MaxVertices, Allocator.Persistent);
+}
+
+private void OnDestroy()
+{
+    if (_vertices.IsCreated)
+    {
+        _vertices.Dispose();
+    }
+}
+```
+
+## Allocator rules
+
+| Allocator | Lifetime | Use for |
+|-----------|----------|---------|
+| `Allocator.Temp` | Current frame; auto-freed | Scratch buffers inside one method — cheapest; still call `Dispose` for clarity |
+| `Allocator.TempJob` | ≤ 4 frames | Data passed into a job |
+| `Allocator.Persistent` | Manual | Long-lived buffers — **must** have a `Dispose` in `OnDestroy`/teardown |
+
+- Every `Persistent` container has exactly one owner responsible for `Dispose`. Guard with `IsCreated`.
+- Never store a `Temp` container in a field — it dies at end of frame.
+- Prefer `RaycastCommand`/`GetRawTextureData`/`Mesh.SetVertexBufferData`-style APIs that accept native containers directly, avoiding managed copies.
+
+## When managed `List<T>` is still right
+
+- Small collections (dozens of items), UI lists, infrequently touched data.
+- Collections of class references (native containers require unmanaged element types).
+
+Then follow allocation discipline: allocate once, pre-size, reuse with `Clear()`.
+
+## Agent checklist
+
+- [ ] Bulk/hot buffers use `NativeArray`/`NativeList` with an explicit allocator
+- [ ] Every `Persistent` container disposed in `OnDestroy`/teardown with `IsCreated` guard
+- [ ] No `Temp` containers stored in fields
+- [ ] Small/reference-typed collections stay managed but pre-sized and reused

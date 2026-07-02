@@ -1,0 +1,76 @@
+---
+description: Async and event hygiene — no async void, symmetric unsubscribe, no Task.Run
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Async and Event Hygiene
+
+## No `Task.Run` — ever
+
+WebGL has no threads (see the webgl no-threads rule). `Task.Run`, `ConfigureAwait(false)`, and thread-pool continuations either fail or silently run on the main thread. Use coroutines or `Awaitable`/main-thread `async` for time-sliced work.
+
+## `async void` is banned (one exception)
+
+`async void` swallows exceptions and can't be awaited or cancelled. The only allowed use is a thin adapter for a Unity message/UI callback that immediately awaits a `Task`-returning method and catches at the top.
+
+```csharp
+// ❌ BAD — fire-and-forget, exceptions vanish
+private async void LoadProfile() { ... }
+
+// ✅ GOOD — Task-returning core, adapter only at the event boundary
+private async void OnLoadClicked()  // UI callback boundary
+{
+    try
+    {
+        await LoadProfileAsync();
+    }
+    catch (Exception e)
+    {
+        Debug.LogException(e);
+    }
+}
+
+private async Task LoadProfileAsync() { ... }
+```
+
+## Async work must respect object lifetime
+
+Play mode can exit, and objects can be destroyed, while an `await` is pending. After every `await` in a MonoBehaviour, guard before touching Unity state:
+
+```csharp
+await FetchAsync();
+if (this == null)
+{
+    return;  // destroyed while awaiting — lifecycle guard, silent return is OK here
+}
+```
+
+Prefer `CancellationToken` (e.g. `destroyCancellationToken`) over ad-hoc flags when available.
+
+## Events: subscribe and unsubscribe symmetrically
+
+Every `+=` / `AddListener` has a matching `-=` / `RemoveListener` in the mirrored lifecycle method: `Awake`↔`OnDestroy`, `OnEnable`↔`OnDisable`.
+
+```csharp
+private void OnEnable()
+{
+    GameEvents.RoundEnded += OnRoundEnded;
+}
+
+private void OnDisable()
+{
+    GameEvents.RoundEnded -= OnRoundEnded;
+}
+```
+
+- **Static events** must also be cleared in the project's static-reset hub (see the unity domain-reload rule) — domain reload is disabled, so stale handlers survive play sessions.
+- Subscribe with method groups, not lambdas — a lambda can't be unsubscribed and leaks the subscriber.
+
+## Agent checklist
+
+- [ ] No `Task.Run` or thread-pool APIs
+- [ ] No `async void` except top-level Unity/UI callback adapters with try/catch
+- [ ] Every `await` in a MonoBehaviour followed by lifetime guard or cancellation token
+- [ ] Every subscribe has a symmetric unsubscribe; no lambda subscriptions
+- [ ] New static events registered in the static-reset hub

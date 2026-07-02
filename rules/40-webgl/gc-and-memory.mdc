@@ -1,0 +1,44 @@
+---
+description: WebGL memory — fixed WASM heap, GC constraints, pre-allocate at load
+globs: **/*.cs
+alwaysApply: false
+---
+
+# WebGL: GC and Memory
+
+WebGL runs in a **WASM linear memory heap**. It can grow but never shrinks back to the browser, and hitting the configured maximum is a hard crash (`Out of memory` in the tab, no recovery). Memory discipline is a correctness requirement here, not just a perf nicety.
+
+## GC behavior on WebGL
+
+- The GC on WebGL runs **only between frames**, not concurrently or incrementally mid-frame the way desktop incremental GC can. A large garbage backlog means a visible hitch when collection finally runs.
+- Allocation-heavy frames therefore translate directly into stutter. The fix is not "tune the GC" — it is **don't allocate** (see allocation-discipline and update-loop-hygiene rules).
+
+## Heap growth is a ratchet
+
+- Every allocation spike (loading burst, huge temporary buffer, giant string) permanently grows the WASM heap to fit the peak.
+- **Pre-allocate at load time**: pools, buffers, native containers sized to peak gameplay demand while the loading screen is up. Steady-state gameplay should allocate ~zero.
+- Avoid patterns that need "double memory" transiently: loading a new copy of data before releasing the old one. Release first, or stream in chunks.
+
+```csharp
+// ❌ BAD — builds a giant temporary string (heap spike, permanent growth)
+string json = JsonConvert.SerializeObject(fullHistory);
+
+// ✅ GOOD — bounded state; big payloads streamed / chunked / avoided client-side
+```
+
+## Asset memory
+
+- Texture and audio memory dominate. Respect max sizes and compression (see build-size rule); an uncompressed 2048² RGBA texture is 16 MB of heap by itself.
+- Unload what you're done with: `Resources.UnloadAsset` / `AssetBundle.Unload(true)` at **transition points** (screen changes, match end).
+- Do **not** call `Resources.UnloadUnusedAssets()` mid-gameplay — it's a multi-frame stall. Schedule it behind loading/transition screens only.
+
+## Watch string churn
+
+Strings are the most common invisible allocator: UI text, log messages, JSON. Rebuild UI strings only on change; keep payload parsing to one pass; never build debug strings that aren't shipped (use `[Conditional]` — see serialization-and-logging rule).
+
+## Agent checklist
+
+- [ ] Peak-demand buffers/pools allocated during loading, not mid-gameplay
+- [ ] No transient double-memory loading patterns
+- [ ] `UnloadUnusedAssets` only at transition points, never during play
+- [ ] No unbounded growth: histories, logs, and caches have caps

@@ -1,0 +1,75 @@
+---
+description: Runtime singletons inherit SingletonBehaviour<T>; Instance throws, no null guards
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Singleton Behaviour
+
+Runtime MonoBehaviour singletons **must** inherit the shared `SingletonBehaviour<T>` base (in the project's Core assembly). Do not hand-roll `static Instance { get; private set; }` + duplicate `Awake` guards.
+
+## Creating a new singleton
+
+```csharp
+public class MyManager : SingletonBehaviour<MyManager>
+{
+    public static new void ResetStatics() => SingletonBehaviour<MyManager>.ResetStatics();
+
+    protected override void OnSingletonAwake()
+    {
+        // Init after this object becomes the active instance.
+        // DontDestroyOnLoad is handled by the base class.
+    }
+}
+```
+
+Then register `MyManager.ResetStatics()` in the project's `PlayModeStaticReset` (see domain-reload-statics rule). Clear any static events in that override.
+
+## Access rules — fail fast, never silently skip
+
+`Instance` **throws** when no instance exists. That is intentional: missing singletons are bugs, not optional dependencies.
+
+```csharp
+// ❌ BAD — silently skips work when singleton is missing
+if (GameFlow.Instance != null)
+    GameFlow.Instance.StartMatch();
+SFXManager.Instance?.Play(Sfx.Click);
+
+// ✅ GOOD — throws immediately if misconfigured
+GameFlow.Instance.StartMatch();
+SFXManager.Instance.Play(Sfx.Click);
+```
+
+**Never** use on singleton `Instance` accessors:
+
+- `?.` (null-conditional) or `??` fallback
+- `if (X.Instance != null)` / `== null` before normal use
+- `if (mgr == null) return` immediately after `var mgr = X.Instance`
+
+## Allowed non-throwing APIs (narrow exceptions)
+
+Only for bootstrap, lazy creation, or teardown — not everyday feature code:
+
+| API | Use when |
+|-----|----------|
+| `HasInstance` | Guard before creating the singleton (`Ensure*`, auto-spawn) |
+| `TryGetInstance(out var x)` | `OnDestroy` / unsubscribe when play mode may have already cleared the instance |
+
+```csharp
+// Bootstrap
+if (SFXManager.HasInstance) return;
+new GameObject("SFXManager").AddComponent<SFXManager>();
+
+// Teardown
+if (GameFlow.TryGetInstance(out var flow))
+    flow.MatchEnded.RemoveListener(OnMatchEnded);
+```
+
+`while (mgr != null && ...)` on a **captured reference** in a coroutine is OK — that guards object destruction mid-coroutine, not singleton existence.
+
+## Agent checklist
+
+- [ ] New singleton derives from `SingletonBehaviour<T>`, not raw MonoBehaviour
+- [ ] `ResetStatics()` registered in `PlayModeStaticReset`
+- [ ] No `?.`, `??`, or `Instance != null` guards on singleton access in feature code
+- [ ] Lazy creation uses `HasInstance`; teardown uses `TryGetInstance`

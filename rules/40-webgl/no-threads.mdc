@@ -1,0 +1,55 @@
+---
+description: WebGL has no threads — no System.Threading, Task.Run, or Parallel
+globs: **/*.cs
+alwaysApply: false
+---
+
+# WebGL: No Threads
+
+Our builds target WebGL, which runs **single-threaded**. C# threading APIs either throw at runtime, deadlock, or silently degrade to main-thread execution. Write all code main-thread-only.
+
+## Banned
+
+- `new Thread(...)`, `ThreadPool.QueueUserWorkItem`
+- `Task.Run(...)`, `Task.Factory.StartNew(...)`
+- `Parallel.For` / `Parallel.ForEach` / PLINQ (`AsParallel`)
+- `lock`, `Monitor`, `Mutex`, `SemaphoreSlim`, `Interlocked` patterns that *expect* concurrency (they compile, but they're dead weight and signal a design that assumes threads)
+- Blocking waits: `Task.Wait()`, `Task.Result`, `Thread.Sleep` — these **deadlock or freeze the browser tab**; there is no other thread to complete the work
+- `System.Timers.Timer` / `System.Threading.Timer` — use Unity time instead
+
+```csharp
+// ❌ BAD — deadlocks on WebGL
+var data = FetchAsync().Result;
+Task.Run(() => BuildGrid());
+
+// ✅ GOOD — await on the main thread
+var data = await FetchAsync();
+
+// ✅ GOOD — heavy work time-sliced across frames instead of offloaded
+private IEnumerator BuildGridSliced()
+{
+    for (int row = 0; row < _rows; row++)
+    {
+        BuildRow(row);
+        yield return null;
+    }
+}
+```
+
+## What to use instead
+
+| Need | Use |
+|------|-----|
+| Async I/O (network, asset load) | `async`/`await` on the main thread, `UnityWebRequest`, coroutines |
+| Heavy CPU work | Time-slice across frames (coroutine / amortized loop — see frame-budget rule) |
+| Delays / timers | `Time.time` comparisons, coroutines, `Awaitable.WaitForSecondsAsync` |
+| Parallel data crunch | C# Job System with Burst — jobs **run on the main thread** in WebGL but Burst still vectorizes; schedule and `Complete()` same frame, don't rely on overlap |
+
+`async`/`await` itself works on WebGL (single-threaded `SynchronizationContext`) — continuations run on the main thread. That's fine; blocking on tasks is what kills you.
+
+## Agent checklist
+
+- [ ] No `Thread`, `Task.Run`, `Parallel`, thread-pool, or timer APIs
+- [ ] No `.Result` / `.Wait()` / `Thread.Sleep` blocking calls
+- [ ] Heavy work time-sliced across frames, not "offloaded"
+- [ ] No design that assumes background threads exist

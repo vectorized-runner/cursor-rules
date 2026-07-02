@@ -1,0 +1,75 @@
+---
+description: Component access — cache GetComponent, no Find/SendMessage, SerializeField private
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Component Access
+
+## Cache component lookups
+
+`GetComponent` walks the component list every call. Resolve once in `Awake` and cache.
+
+```csharp
+// ❌ BAD — lookup every frame
+private void Update()
+{
+    GetComponent<Rigidbody>().linearVelocity = _velocity;
+}
+
+// ✅ GOOD — cached in Awake
+private Rigidbody _rigidbody;
+
+private void Awake()
+{
+    _rigidbody = GetComponent<Rigidbody>();
+}
+```
+
+## `TryGetComponent` over null-check pattern
+
+```csharp
+// ❌ BAD — allocates a "null" wrapper in editor, two-step
+var health = other.GetComponent<Health>();
+if (health != null) { health.Apply(dmg); }
+
+// ✅ GOOD
+if (other.TryGetComponent(out Health health))
+{
+    health.Apply(dmg);
+}
+```
+
+## Banned lookup APIs in feature code
+
+- `GameObject.Find` / `Transform.Find` for permanent wiring — use `[SerializeField]` references assigned in the Inspector.
+- `FindObjectOfType` / `FindAnyObjectByType` per frame or per spawn — resolve once at load if truly needed.
+- `SendMessage` / `BroadcastMessage` — string-based, reflection-backed, silent on typo. Call methods directly or use events.
+- `gameObject.tag == "Player"` — allocates; use `CompareTag("Player")`.
+
+## Serialized references
+
+- Use `[SerializeField] private` fields, never `public` fields, for Inspector wiring:
+
+```csharp
+// ❌ BAD
+public Transform muzzle;
+
+// ✅ GOOD
+[SerializeField] private Transform _muzzle;
+```
+
+- A required serialized ref left unassigned is a misconfiguration — fail fast (`Debug.LogError` or throw) rather than silently skipping (see fail-fast rule).
+
+## Unity object lifetime
+
+- Unity's `==` overload makes destroyed objects compare equal to null — but only through `UnityEngine.Object`-typed references. Do **not** store MonoBehaviours in interface-typed fields and null-check them; the check silently stops working.
+- Don't use `?.` or `??` on `UnityEngine.Object` references — those operators bypass the lifetime check.
+
+## Agent checklist
+
+- [ ] All `GetComponent` results cached in `Awake`/`Start`, none in per-frame code
+- [ ] `TryGetComponent` used for conditional component access
+- [ ] No `Find`/`SendMessage`/`BroadcastMessage`; no `tag ==` (use `CompareTag`)
+- [ ] Inspector wiring uses `[SerializeField] private`, not public fields
+- [ ] No `?.`/`??` on `UnityEngine.Object` references

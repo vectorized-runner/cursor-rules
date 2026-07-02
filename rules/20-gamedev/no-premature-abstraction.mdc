@@ -1,0 +1,50 @@
+---
+description: No premature abstraction — no single-impl interfaces, no manager/factory zoo, no DI
+globs: **/*.cs
+alwaysApply: false
+---
+
+# No Premature Abstraction
+
+Prefer explicit, concrete code over generic frameworks. Abstractions are debt until proven otherwise.
+
+## Hard rules
+
+- **No interface for a single implementation.** An interface is justified only by 2+ real implementations existing today, or a genuine seam (platform backends, test double for external I/O).
+- **Do not create** `Manager`, `Service`, `Provider`, `Factory`, `Registry`, `Facade`, `Adapter`, or `Strategy` classes unless explicitly requested. Name classes after what they do (`CardDealer`, `WaveSpawner`), not their pattern.
+- **No dependency injection frameworks.** No containers, no `[Inject]`. Wire dependencies with serialized fields, constructor parameters, or direct references.
+- **Favor direct references over service locators.** `_audio.Play(clip)` via a serialized/constructor ref beats `Services.Get<IAudioService>().Play(clip)`.
+- **Inheritance max 1 level deep** below the framework base class (`MonoBehaviour → Enemy → FlyingEnemy` is the limit). Prefer composition or an enum + switch.
+- **Do not abstract until 3 real usages exist.** Two similar blocks of code are allowed to stay similar.
+
+```csharp
+// ❌ BAD — interface + factory + injection for one implementation
+public interface IScoreCalculator { int Calculate(RoundData d); }
+public class ScoreCalculatorFactory { public IScoreCalculator Create() => new DefaultScoreCalculator(); }
+
+// ✅ GOOD — a method where the logic is used
+private int CalculateScore(RoundData d)
+{
+    return d.BaseScore * d.Multiplier;
+}
+```
+
+## Duplication is acceptable
+
+Small duplication is preferred over premature abstraction. Do not unify two code paths behind generics/inheritance if the unified version is harder to read than the two concrete versions. Abstract only when a pattern is **proven** (3+ sites) and the abstraction is simpler than the duplication.
+
+## When an abstraction IS justified
+
+- 2+ real implementations shipped or concretely scheduled (not hypothetical).
+- Isolating external I/O (network, storage) for testing.
+- A platform seam (editor vs WebGL behavior).
+
+When you introduce one, say why in one sentence in the change description.
+
+## Agent checklist
+
+- [ ] No new interfaces with a single implementation
+- [ ] No new *Manager/*Service/*Provider/*Factory/*Registry/*Facade/*Strategy classes unless requested
+- [ ] No DI containers or service locators; direct references used
+- [ ] Inheritance depth ≤ 1 below framework base
+- [ ] Any new abstraction has 3+ usages or an explicit justification

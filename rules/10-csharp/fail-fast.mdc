@@ -1,0 +1,87 @@
+---
+description: Fail fast — no silent null returns, no returning null, throw with context
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Fail Fast
+
+Bugs must surface at the source, loudly, during development — not as an NRE three frames later in unrelated code.
+
+## Callers: no silent bail on missing values
+
+If code **expects** a value to exist (dependency, payload, serialized ref) and it is null or missing, do **not** bare `return`. Log with context first.
+
+```csharp
+// ❌ BAD — bug is invisible
+if (data == null) return;
+
+// ✅ GOOD — surfaces misconfiguration or bad input
+if (data == null)
+{
+    Debug.LogError($"[CombatSystem] ApplyDamage — payload deserialized to null (id={eventId})");
+    return;
+}
+```
+
+Use a consistent prefix: `[ClassName] MethodName — reason`, with useful context (ids, state).
+
+| Level | When |
+|-------|------|
+| **Error** | Required for this code path; skipping means wrong state, lost event, or broken feature |
+| **Warning** | Unexpected but recoverable, or possibly optional |
+
+Silent return is OK only for: intentional control flow (debounce, dedup, idempotent guards), lifecycle (`this == null` after async, teardown), legitimately optional fields, and explicit product choices.
+
+## Producers: never return null to signal failure
+
+A method expected to return a value must not return `null` for "not found". Throw with a descriptive message at the source.
+
+```csharp
+// ❌ BAD — leaks a null that NREs elsewhere
+public Unit GetUnit(int id)
+{
+    if (!_units.TryGetValue(id, out var unit)) return null;
+    return unit;
+}
+
+// ✅ GOOD — throws at the source with context
+public Unit GetUnit(int id)
+{
+    if (!_units.TryGetValue(id, out var unit))
+    {
+        throw new InvalidOperationException(
+            $"[UnitRegistry] GetUnit — no unit with id {id}. Known: [{string.Join(", ", _units.Keys)}].");
+    }
+    return unit;
+}
+```
+
+When absence is a **normal** outcome, expose a `Try*` API instead of a nullable getter:
+
+```csharp
+public bool TryGetUnit(int id, out Unit unit) { ... }
+```
+
+Pair the two: throwing `Get*` for must-exist paths, `Try*` for may-be-absent paths. No "log error then `return null`" half-measures — if it's an error, throw.
+
+Returning null is allowed only when null is a genuine contract value: parse/deserialize results, `FirstOrDefault`-style "no match is normal" lookups, documented "none" sentinels.
+
+## No defensive null checks on internal code
+
+Trust internal invariants; use `Debug.Assert` for impossible states instead of scattering `if (x == null) return;`. Validate only at system boundaries (user input, network payloads, serialized scene refs).
+
+```csharp
+// ❌ BAD — hides the bug
+if (target == null) return;
+
+// ✅ GOOD — fails loudly in development
+Debug.Assert(target != null, "[Turret] Fire — target must be assigned before Fire()");
+```
+
+## Agent checklist
+
+- [ ] Expected-to-exist null → `Debug.LogError`/`LogWarning` with `[ClassName] Method — reason` context, never silent `return`
+- [ ] Must-exist lookups throw; may-be-absent lookups expose `Try*` — no `return null` for failure
+- [ ] No new defensive null checks on internal code paths; assert instead
+- [ ] No silent `catch { }` — log at minimum

@@ -1,0 +1,53 @@
+---
+description: Wire contract DTOs stay pure data — no display logic, no UI references
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Pure DTO Contracts
+
+Types under the project's `Gameplay/Contracts/` folder are the **wire contract** — the serialized shape exchanged with the backend. They must stay **pure data**. Do not add client-side, presentation, or app-specific logic to them.
+
+## Allowed in contracts
+
+- Serialized fields with `[JsonProperty(...)]` (and `[Serializable]`, enum `[EnumMember(...)]`)
+- Enum definitions and their wire-name attributes
+- XML doc comments and `[JsonIgnore]` on serialization-only concerns
+
+## Not allowed in contracts
+
+Put these on a **client system** (helper method, extension, or static utility in Core/Gameplay/Presentation) instead:
+
+- Display/formatting logic — labels, hierarchy names, UI strings (`DisplayName`, `ToLabel()`)
+- Derived presentation values — colors, sprites, icons, sort keys for UI
+- Client-only computed properties encoding app behavior rather than wire shape
+- Any reference to `UnityEngine.UI`, TMP, sprites, materials, or scene objects
+
+```csharp
+// ❌ BAD — client-side label logic on the contract
+// Contracts/Domain/Card.cs
+public string DisplayName => Value switch { CardValue.Wild => "Wild", _ => $"{Color}_{Value}" };
+
+// ✅ GOOD — private helper on the caller
+// Presentation/CardUI/CardFactory.cs
+private static string FormatCardName(Card card) => card.Value switch
+{
+    CardValue.Wild => "Wild",
+    _ => $"{card.Color}_{card.Value}",
+};
+```
+
+## Gray area: wire-derived helpers
+
+Small `[JsonIgnore]` helpers that only restate the wire data (e.g. `Card.IsWild` — fixed by game rules, not the client) are tolerated as part of the data definition. If the value depends on **how the client presents or names things**, it belongs on a client system.
+
+## Changing the contract
+
+When adding or changing wire types, match the backend spec exactly (field names, casing, optionality) and update only the contract folder — mapping/enrichment happens in gameplay systems, not in the DTO.
+
+## Agent checklist
+
+- [ ] No display/formatting/UI logic added to contract types
+- [ ] Derived label/visual helpers live on a client system, not the DTO
+- [ ] Contract types reference no presentation namespaces or Unity UI types
+- [ ] New computed members reflect wire/game data, not client presentation choices

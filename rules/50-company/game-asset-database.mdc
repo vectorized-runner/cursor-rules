@@ -1,0 +1,70 @@
+---
+description: Load assets by address via ResourceManager/GameAssetDatabase — no Resources.Load
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Game Asset Database
+
+Load project assets by **string address** through the shared `ResourceManager` + `GameAssetDatabase` infrastructure. Do **not** use `Resources.Load`, `Resources.LoadAll`, or `Resources.LoadAsync` in feature or editor code.
+
+## Architecture
+
+| Piece | Role |
+|-------|------|
+| `AssetEntry` | Serializable pair: `address` + `UnityEngine.Object` |
+| `AssetGroup` | ScriptableObject holding entries for one category (Configs, SFX, Textures, …) |
+| `GameAssetDatabase` | Root catalog referencing all groups |
+| `ResourceManager` | Flattens groups into an address dictionary; runtime load API |
+
+## Loading at runtime
+
+```csharp
+// Required asset — throws if address missing, null, or wrong type
+var clip = ResourceManager.Load<AudioClip>("Audio/SFX/card_play");
+
+// Optional asset — check registration first, then load
+if (ResourceManager.Contains("special_fx"))
+{
+    var prefab = ResourceManager.Load<GameObject>("special_fx");
+    Instantiate(prefab, transform);
+}
+
+// Multiple sub-assets under a prefix
+var clips = ResourceManager.LoadAll<AnimationClip>("character_idle");
+```
+
+- **Fail fast:** if an asset is expected for a code path, call `Load<T>` directly — it throws on missing address, null asset, or type mismatch. Do not catch and continue.
+- **Optional assets:** use `Contains(address)` only for intentional fallbacks. When `Contains` is true, `Load<T>` — a wrong type or null entry is still a misconfiguration and should throw.
+
+## Do not cache loaded assets
+
+`ResourceManager` already holds registered assets for the session. Feature code must **not** add static or instance caches of assets loaded through it.
+
+```csharp
+// ❌ BAD — duplicate cache
+private static GameObject _cardPrefab;
+if (_cardPrefab == null) _cardPrefab = ResourceManager.Load<GameObject>("card_prefab");
+
+// ✅ GOOD — load each time (lookup is a dictionary hit)
+var prefab = ResourceManager.Load<GameObject>("card_prefab");
+```
+
+Runtime-generated resources (procedural textures, cloned materials) may be cached when creation cost matters — that is not asset-database caching.
+
+## Registering a new asset
+
+1. Add an entry (address + reference) to the appropriate `AssetGroup` asset, chosen by category.
+2. Use the same address string at the call site.
+3. Keep addresses stable — they are the public API.
+
+## Allowed exception (bootstrap only)
+
+The **only** permitted `Resources.Load` is inside `ResourceManager` itself, loading the catalog. Editor tooling loads by project path via `AssetDatabase.LoadAssetAtPath`, not `Resources`.
+
+## Agent checklist
+
+- [ ] No new `Resources.Load` / `LoadAll` / `LoadAsync` calls
+- [ ] New assets registered in the correct `AssetGroup` with a stable address
+- [ ] Expected assets use throwing `Load<T>`; optional paths use `Contains` first
+- [ ] No new caches of assets loaded via `ResourceManager`

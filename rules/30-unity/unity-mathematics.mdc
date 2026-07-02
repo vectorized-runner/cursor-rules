@@ -1,0 +1,52 @@
+---
+description: Use Unity.Mathematics over Mathf/Vector3 for computation-heavy code
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Unity.Mathematics over Mathf
+
+Use `Unity.Mathematics` (`math.*`, `float3`, `float4x4`, `quaternion`) instead of `Mathf`/`Vector3` in computation-heavy code. It is SIMD-friendly, Burst-compatible, and avoids `Mathf`'s double-conversion overhead in several methods.
+
+```csharp
+// ❌ BAD — Mathf + Vector3 in a simulation loop
+Vector3 dir = (target - pos).normalized;
+float dist = Vector3.Distance(pos, target);
+float t = Mathf.Clamp01(elapsed / duration);
+pos = Vector3.Lerp(a, b, t);
+
+// ✅ GOOD — Unity.Mathematics
+float3 dir = math.normalize(target - pos);
+float dist = math.distance(pos, target);
+float t = math.saturate(elapsed / duration);
+pos = math.lerp(a, b, t);
+```
+
+## Concrete mappings
+
+| Instead of | Use |
+|------------|-----|
+| `Mathf.Clamp01(x)` | `math.saturate(x)` |
+| `Mathf.Clamp / Min / Max / Abs / Sqrt / Sin / Cos` | `math.clamp / min / max / abs / sqrt / sin / cos` |
+| `Vector3.Distance(a, b)` | `math.distance(a, b)` |
+| `v.magnitude` (comparison only) | `math.lengthsq(v)` vs squared threshold |
+| `Vector3.Dot / Cross / Lerp / Normalize` | `math.dot / cross / lerp / normalize` |
+| `Quaternion.Slerp` | `math.slerp` |
+| `Mathf.PerlinNoise` | `noise.cnoise` / `noise.snoise` |
+
+- **Never compare magnitudes with `magnitude`/`length`** — compare `lengthsq` against a squared threshold to skip the sqrt.
+- `float3` ↔ `Vector3` convert implicitly and for free; keep the **math** in `float3` and convert only at the Transform boundary.
+
+## When plain `Vector3`/`Mathf` is acceptable
+
+- Thin glue directly against Unity APIs (`transform.position = ...`, physics queries) with no math chain.
+- One-off UI/layout calculations outside hot paths.
+- Serialized fields in MonoBehaviours/SOs (Inspector shows `Vector3` natively; `float3` also serializes but tooling is weaker).
+
+Do not mechanically rewrite existing working glue code — apply this to new or edited computation code.
+
+## Agent checklist
+
+- [ ] New simulation/math-heavy code uses `Unity.Mathematics` types and `math.*`
+- [ ] Distance comparisons use `lengthsq`/`distancesq`, no sqrt
+- [ ] Conversions to `Vector3` only at the Unity API boundary

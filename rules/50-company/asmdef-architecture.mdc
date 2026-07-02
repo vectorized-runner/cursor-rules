@@ -1,0 +1,46 @@
+---
+description: Core/Gameplay/Presentation asmdef split — reference directions and placement
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Assembly Architecture: Core / Gameplay / Presentation
+
+Company projects split runtime code into three assemblies with one-way references, enforced by asmdefs:
+
+| Assembly | Folder | May reference |
+|----------|--------|---------------|
+| `<Game>.Core` | `Runtime/Core/` | Unity engine only — shared infrastructure |
+| `<Game>.Gameplay` | `Runtime/Gameplay/` | Core, contracts, networking — **not** presentation |
+| `<Game>.Presentation` | `Runtime/Presentation/` | Core, Gameplay, Unity UI/TMP |
+
+**Direction:** Presentation → Gameplay → Core. Never the reverse — the compiler enforces it; don't fight the asmdef by moving files to the wrong layer.
+
+## What goes where
+
+- **Core** — `ResourceManager`, `GameAssetDatabase`, `SingletonBehaviour<T>`, generic infrastructure. No gameplay state, no presentation, no networking.
+- **Gameplay** — client game state, server sync, session flow, player actions, the game-state singleton exposing state + events + commands. No `Canvas`, TMP, view classes, overlays, or scene presentation code. No spawning presentation objects — presentation bootstraps itself.
+- **Presentation** — 3D scene views, overlays, HUD, input raycasts, animations, audio playback. Subscribes to gameplay events; calls gameplay methods for actions.
+
+## Communication pattern
+
+```csharp
+// Presentation sends input
+GameState.Instance.PlayCard(cardId, color);
+
+// Gameplay notifies presentation (subscribe in Start/OnEnable, unsubscribe in OnDestroy/OnDisable)
+GameState.Instance.OnHandChanged.AddListener(RefreshHand);
+```
+
+Gameplay exposes data and events; presentation reads them in handlers. No callbacks from gameplay into presentation types.
+
+## Namespaces match folders
+
+Each project defines a namespace per assembly (e.g. `MT.<Game>.Runtime`, `MT.<Game>.Editor`). New scripts use the namespace matching their folder; no global-namespace scripts. `using` directives go outside the namespace block.
+
+## Agent checklist
+
+- [ ] New gameplay script under `Runtime/Gameplay/`, presentation under `Runtime/Presentation/`, generic utility under `Runtime/Core/`
+- [ ] No presentation type references from Gameplay or Core
+- [ ] Presentation communicates via gameplay events + command methods only
+- [ ] Namespace matches the folder/assembly convention

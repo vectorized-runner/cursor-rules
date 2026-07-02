@@ -1,0 +1,45 @@
+---
+description: Author tunable content in scenes/prefabs/SOs, not constructed from code
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Scene / Inspector Authoring
+
+Place tunable content in **scenes, prefabs, ScriptableObjects, and materials** — not spawned from code at runtime. Artists and designers must be able to edit values in the Inspector without reading C#.
+
+## Prefer scene / asset authoring
+
+- **Lights, reflection probes, post-processing volumes** — scene objects / volume profile assets, not `new GameObject(...).AddComponent<Light>()`.
+- **Materials** — tune the `.mat` asset and prefab renderer settings; do not clone materials at runtime for the baseline look.
+- **Grouping nodes, gizmo targets, spawn points** — scene objects.
+- **Tunable numbers** (speeds, costs, timings, curves) — `[SerializeField]` fields or ScriptableObject configs, not hardcoded constants.
+
+```csharp
+// ❌ BAD — light exists only at runtime; not editable in the scene
+var go = new GameObject("RimLight");
+go.AddComponent<Light>().intensity = 2.4f;
+
+// ✅ GOOD — light lives in the scene; code holds a reference for reactive changes
+[SerializeField] private Light _rimLight;
+```
+
+## When runtime setup is OK
+
+- **Player/session objects** — spawned characters, cards, dynamic UI entries.
+- **One-off bootstrap** for objects missing from every scene (`EventSystem`, audio managers) when no scene object exists yet.
+- **Reactive state** — highlight emission, animated intensities, values driven by gameplay events. Runtime code adjusts values that must change with gameplay; the baseline is authored.
+
+Even then, prefer a scene component with `[SerializeField]` refs wired in the Inspector over `Find` + `AddComponent` in `Start`.
+
+## Runtime-created GPU resources
+
+Any `new Material(...)`, mesh, or texture created at runtime must be destroyed in `OnDestroy` (or the static-reset hub if cached statically) — leaked instances hold GPU memory.
+
+## Agent checklist
+
+- [ ] New lights/probes/volume tweaks are scene/prefab/asset objects, not code-generated
+- [ ] No runtime material cloning or `AddComponent<Light>` for baseline look
+- [ ] Tunables exposed as `[SerializeField]` or SO fields, not hardcoded
+- [ ] Runtime code only drives values that must change with gameplay
+- [ ] Runtime-created Materials/Meshes destroyed on teardown

@@ -1,0 +1,54 @@
+---
+description: No runtime reflection — IL2CPP stripping and AOT hazards, perf cost
+globs: **/*.cs
+alwaysApply: false
+---
+
+# No Runtime Reflection
+
+Do **not** use reflection in runtime code. Under IL2CPP + managed stripping (our WebGL builds), reflection is slow, allocates heavily, and silently breaks: stripped members return null, and AOT can't generate code for types discovered at runtime.
+
+## Banned in runtime code
+
+- `GetType().GetMethod(...)` / `GetProperty` / `GetField` / `Invoke`
+- `Activator.CreateInstance(...)`
+- `typeof(T).GetFields()` / attribute scanning at runtime (`GetCustomAttributes`)
+- `Assembly.GetTypes()` / type discovery loops
+- `Type.GetType("SomeClass, SomeAssembly")` string-based type lookup
+- `dynamic`
+- `Enum.GetValues` / `Enum.GetNames` / `enum.ToString()` in hot paths (reflection-backed and allocating — cache the results once)
+
+```csharp
+// ❌ BAD — runtime type discovery; breaks under stripping
+var handler = Activator.CreateInstance(Type.GetType($"Game.{name}Handler"));
+var method = target.GetType().GetMethod("OnHit");
+method.Invoke(target, null);
+
+// ✅ GOOD — explicit, direct dispatch
+switch (kind)
+{
+    case EffectKind.Burn:
+        ApplyBurn(target);
+        break;
+    case EffectKind.Freeze:
+        ApplyFreeze(target);
+        break;
+    default:
+        throw new ArgumentOutOfRangeException(nameof(kind), kind, "[EffectSystem] Apply — unhandled effect kind");
+}
+```
+
+If you feel the need for reflection-based dispatch, the answer is an explicit `switch` on an enum, a `Dictionary<TKey, Action<T>>` populated with **statically referenced** methods, or plain direct calls.
+
+## Allowed exceptions
+
+- **Editor code** — inspectors, code generators, asset pipelines.
+- **One-time serialization setup** at bootstrap (e.g. JSON converter registration) where the types are statically referenced so stripping keeps them — never per-frame or per-message.
+- Third-party libraries that use reflection internally (e.g. Newtonsoft) — but keep our call sites typed, and prefer explicit `[JsonProperty]` contracts over convention-based discovery.
+
+## Agent checklist
+
+- [ ] No `Activator`, `GetMethod`/`Invoke`, `Assembly.GetTypes`, string-based `Type.GetType` in runtime code
+- [ ] Dispatch uses `switch`/dictionary with statically referenced methods
+- [ ] Enum names/values cached once, not queried per frame
+- [ ] Any reflection is editor-only or documented one-time bootstrap

@@ -1,0 +1,66 @@
+---
+description: Object pooling — no Instantiate/Destroy churn in gameplay loops
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Object Pooling
+
+`Instantiate` and `Destroy` allocate, fragment the heap, and trigger GC — on WebGL the spikes are visible as hitches. Anything spawned repeatedly during gameplay must be pooled.
+
+## When to pool
+
+Pool any prefab spawned more than ~once per second during play: projectiles, hit VFX, floating damage text, audio one-shots, UI list items, cards, pickups.
+
+Do **not** pool one-off objects (a boss, a screen, a loading panel) — a pool for a single instance is over-engineering.
+
+## Pattern
+
+Use `UnityEngine.Pool.ObjectPool<T>` (built-in, no package) or a simple stack-based pool. Deactivate on release, reset state on get.
+
+```csharp
+// ❌ BAD — churn in a gameplay loop
+private void Fire()
+{
+    var go = Instantiate(_projectilePrefab, muzzle.position, muzzle.rotation);
+    Destroy(go, 3f);
+}
+
+// ✅ GOOD — pooled, pre-warmed
+private ObjectPool<Projectile> _pool;
+
+private void Awake()
+{
+    _pool = new ObjectPool<Projectile>(
+        createFunc: () => Instantiate(_projectilePrefab, _poolRoot),
+        actionOnGet: p => p.gameObject.SetActive(true),
+        actionOnRelease: p => p.gameObject.SetActive(false),
+        defaultCapacity: 32);
+}
+
+private void Fire()
+{
+    var p = _pool.Get();
+    p.Launch(muzzle.position, muzzle.forward, ReturnToPool);
+}
+
+private void ReturnToPool(Projectile p)
+{
+    _pool.Release(p);
+}
+```
+
+## Rules
+
+- **Pre-warm at load.** Allocate the expected peak count during loading, not mid-combat. Size the pool from real gameplay numbers, not guesses.
+- **Reset on get, not on release** when possible — the reset code then also covers freshly created instances.
+- **Never `Destroy` a pooled object** from feature code; always release. A pooled object destroyed elsewhere corrupts the pool — release paths must be single-owner.
+- **Trail renderers, particles, timers** must be cleared on release (`TrailRenderer.Clear()`, `ParticleSystem.Clear()`), or the next Get shows ghosts.
+- Pools holding static references must be cleared in the project's static-reset hub (domain reload is disabled).
+
+## Agent checklist
+
+- [ ] Repeatedly spawned prefabs go through a pool, not Instantiate/Destroy
+- [ ] Pool pre-warmed at load with realistic capacity
+- [ ] State (trails, particles, velocities) reset so reused instances are clean
+- [ ] Static pools registered in the static-reset hub

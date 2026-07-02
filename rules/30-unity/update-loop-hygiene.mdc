@@ -1,0 +1,69 @@
+---
+description: Update loop hygiene — zero allocations, non-alloc physics, cached yields and hashes
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Update Loop Hygiene
+
+`Update`, `FixedUpdate`, `LateUpdate`, and per-frame coroutine bodies must be **allocation-free** and cheap. Everything here compounds: 0.1 ms × 20 components × 60 fps is your whole frame.
+
+## Zero allocations per frame
+
+No `new` (reference types), no LINQ, no string building, no capturing lambdas, no boxing inside per-frame methods. See the allocation-discipline rule; it applies doubly here.
+
+## Physics: non-alloc overloads with pre-allocated buffers
+
+```csharp
+// ❌ BAD — allocates a hit array every call
+RaycastHit[] hits = Physics.RaycastAll(ray, range);
+Collider[] overlaps = Physics.OverlapSphere(pos, radius);
+
+// ✅ GOOD — reused buffer
+private readonly RaycastHit[] _hitBuffer = new RaycastHit[16];
+
+int count = Physics.RaycastNonAlloc(ray, _hitBuffer, range);
+for (int i = 0; i < count; i++)
+{
+    Process(_hitBuffer[i]);
+}
+```
+
+Same for `OverlapSphereNonAlloc`, `BoxCastNonAlloc`, `Physics2D` buffer overloads.
+
+## Cache coroutine yields
+
+```csharp
+// ❌ BAD — new WaitForSeconds allocated every loop iteration
+while (true)
+{
+    yield return new WaitForSeconds(0.5f);
+}
+
+// ✅ GOOD — cached
+private static readonly WaitForSeconds HalfSecond = new WaitForSeconds(0.5f);
+
+while (true)
+{
+    yield return HalfSecond;
+}
+```
+
+`yield return null` for next-frame is free and preferred over `new WaitForEndOfFrame()` unless end-of-frame timing is required.
+
+## Cache string-keyed lookups
+
+- `Animator.SetBool("IsRunning", ...)` hashes the string per call — cache `private static readonly int IsRunning = Animator.StringToHash("IsRunning");`
+- Same for `Shader.PropertyToID` on material properties.
+- Cache `Camera.main` in `Awake`/`OnEnable` (or a scene ref) — don't call it per frame.
+
+## Prefer disabling over early-out Update
+
+An empty or `if (!active) return;` `Update` still costs a native→managed call per instance. If a component idles for long stretches, set `enabled = false` and re-enable on demand. Delete empty `Update`/`Awake` stubs entirely.
+
+## Agent checklist
+
+- [ ] No allocations in `Update`/`FixedUpdate`/`LateUpdate`/coroutine loops
+- [ ] Physics queries use NonAlloc/buffer overloads with reused arrays
+- [ ] `WaitForSeconds`, animator hashes, shader IDs, `Camera.main` cached
+- [ ] Idle components disabled instead of early-out `Update`; no empty Unity message stubs

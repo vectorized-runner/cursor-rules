@@ -1,0 +1,79 @@
+---
+description: C# style — braces on all ifs, explicit private, fields first, no premature utils
+globs: **/*.cs
+alwaysApply: false
+---
+
+# C# Code Style
+
+## No one-liner if statements
+
+Always use braces for `if`, `else if`, and `else` bodies — even single statements.
+
+```csharp
+// ❌ BAD
+if (x) DoThing();
+if (x) return;
+
+// ✅ GOOD
+if (x)
+{
+    DoThing();
+}
+```
+
+Ternary (`?:`) is fine.
+
+## Explicit `private` modifier
+
+Never rely on the implicit default access level. Write `private` on every private field, method, property, and nested type.
+
+```csharp
+// ❌ BAD
+int _count;
+void Recalculate() { }
+
+// ✅ GOOD
+private int _count;
+private void Recalculate() { }
+```
+
+## Member order — fields first
+
+Within a type, declare **fields before** properties, constructors, and methods. Group all fields at the top (constants, statics, serialized, instance). Nested types go at the bottom.
+
+```csharp
+// ✅ GOOD
+public class HandLayout : MonoBehaviour
+{
+    [SerializeField] private float _spacing;
+    private readonly List<CardView> _cards = new();
+
+    public int CardCount => _cards.Count;
+
+    private void Awake() { }
+}
+```
+
+## No premature util classes
+
+Do not create a static helper/util class for logic used in **one place**. Keep it inline or as a private method on the type that needs it. Extract to a shared helper only when the same logic is duplicated in **at least two** call sites.
+
+```csharp
+// ❌ BAD — new CardNaming.cs for a single call site
+go.name = $"Card_{CardNaming.DisplayName(card)}";
+
+// ✅ GOOD — local until a second site needs it
+go.name = $"Card_{FormatCardName(card)}";
+```
+
+## No one-line wrapper methods
+
+Do not extract a method whose entire body is a single call to another method with the same arguments. Call the target directly.
+
+## Agent checklist
+
+- [ ] No `if (…) statement;` without braces in new or edited code
+- [ ] `private` written explicitly on all private members
+- [ ] Fields declared before properties and methods within each type
+- [ ] No new util class or wrapper method for single-call-site logic

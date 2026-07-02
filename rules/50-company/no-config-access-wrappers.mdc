@@ -1,0 +1,49 @@
+---
+description: No static config loader/wrapper classes — load configs at the use site, read SO fields live
+globs: **/*.cs
+alwaysApply: false
+---
+
+# No Config Access Wrapper Classes
+
+Do **not** add static helper classes whose only job is loading a config asset (`*Access`, `*Source`, `*Provider`, `*Loader`).
+
+`ResourceManager` already holds registered assets for the session. Call `ResourceManager.Load<T>(address)` at the use site, or keep a **reference field** on the owning type and read fields from that ScriptableObject at runtime — so Inspector edits apply without re-init.
+
+```csharp
+// ❌ BAD — needless indirection
+static class GameplayConfigAccess
+{
+    static GameplayConfig _config;
+    public static GameplayConfig Get() { ... }
+}
+
+// ❌ BAD — copies SO fields; Inspector changes won't apply until re-init
+private void Initialize(GameplayConfig config)
+{
+    _dragStartPixels = config.dragStartPixels;
+}
+
+// ✅ GOOD — load where needed
+_gameplayConfig = ResourceManager.Load<GameplayConfig>(GameplayConfig.Address);
+
+// ✅ GOOD — hold the SO reference; read live fields
+public bool DragInputEnabled => _gameplayConfig.dragInputEnabled;
+```
+
+## Allowed
+
+- `[SerializeField] private GameplayConfig _config` on a MonoBehaviour, wired in the scene/prefab.
+- An instance field holding the loaded SO on the type that owns the config for the session.
+- **Logic** helpers that take an already-loaded config as a parameter — not loaders.
+
+## Not allowed
+
+- New static singleton/accessor classes wrapping `ResourceManager.Load` for configs.
+- Copying config SO fields into private primitives/bools on init when live reads are intended.
+
+## Agent checklist
+
+- [ ] No new `*Access` / `*Source` / `*Provider` / `*Loader` config classes
+- [ ] Config loaded with `ResourceManager.Load<T>` or a serialized reference
+- [ ] Runtime reads go through the SO reference, not stale field copies

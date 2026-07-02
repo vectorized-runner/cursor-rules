@@ -1,0 +1,63 @@
+---
+description: Data-oriented design — arrays of structs, linear iteration, hot/cold split
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Data-Oriented Design
+
+Design bulk gameplay state around **how it is processed**, not around object taxonomies. CPUs are fast at linear scans over contiguous memory and slow at chasing references.
+
+## Arrays of structs for bulk data
+
+When a system processes many instances per frame (units, projectiles, cards, grid cells), store them as a flat array/list of **structs**, indexed by id — not as a graph of class instances.
+
+```csharp
+// ❌ BAD — per-instance class objects, pointer-chasing, scattered in memory
+public class Projectile
+{
+    public Transform Owner;
+    public float Speed;
+    public float Damage;
+    public Vector3 Velocity;
+}
+private List<Projectile> _projectiles;
+
+// ✅ GOOD — contiguous struct storage, processed linearly
+public struct ProjectileData
+{
+    public float3 Position;
+    public float3 Velocity;
+    public float Damage;
+    public int OwnerId;
+}
+private ProjectileData[] _projectiles;
+private int _projectileCount;
+
+private void TickProjectiles(float dt)
+{
+    for (int i = 0; i < _projectileCount; i++)
+    {
+        _projectiles[i].Position += _projectiles[i].Velocity * dt;
+    }
+}
+```
+
+## Rules
+
+- **Iterate linearly.** Process one array in one loop; avoid per-element virtual calls, delegates, or dictionary lookups inside the loop body.
+- **Separate hot and cold data.** Data touched every frame (position, velocity, timer) lives in one struct; data touched rarely (display name, loadout, config ref) lives elsewhere, joined by index/id. Don't drag cold bytes through the cache.
+- **Use ids/indices, not object references,** to relate entities in bulk systems. `int ownerId` beats `Unit owner` in a struct array.
+- **Swap-remove** for unordered lists: move last element into the removed slot, decrement count — no `List.RemoveAt(0)` shifting in hot paths.
+- MonoBehaviours remain the interface to the scene (rendering, colliders). The *simulation state* they visualize can still live in flat arrays owned by one system that updates all instances in one loop, instead of N `Update()` calls.
+
+## Scope
+
+This applies to systems with many instances processed per frame. A single lobby screen or one player controller does not need SoA gymnastics — keep those simple and direct.
+
+## Agent checklist
+
+- [ ] Bulk per-frame state stored as flat struct arrays/lists, not class graphs
+- [ ] Hot loop bodies free of virtual calls, delegate invokes, and dictionary lookups
+- [ ] Hot/cold data separated; relations expressed as ids
+- [ ] Unordered removal uses swap-remove

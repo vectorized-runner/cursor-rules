@@ -1,0 +1,40 @@
+---
+description: WebGL forbidden APIs — sockets, HttpClient, sync file I/O, Process, native plugins
+globs: **/*.cs
+alwaysApply: false
+---
+
+# WebGL: Forbidden APIs
+
+The browser sandbox removes whole API families. These compile fine and then fail (or misbehave) only in the WebGL player — catch them at review time, not in QA.
+
+## Banned APIs and their replacements
+
+| Banned | Why | Use instead |
+|--------|-----|-------------|
+| `System.Net.Sockets` (`TcpClient`, `UdpClient`) | No raw sockets in browsers | WebSocket (JS interop / vetted package) or `UnityWebRequest` |
+| `System.Net.Http.HttpClient` | Thread-pool based; unreliable on WebGL; bloats build | `UnityWebRequest` |
+| `System.IO` file access (`File.ReadAllText`, `FileStream`, `Directory.*`) on user paths | No real filesystem; only a virtual FS exists | `PlayerPrefs` for small data; `UnityWebRequest` for downloads; `Application.persistentDataPath` works but is IndexedDB-backed (see below) |
+| `System.Diagnostics.Process` | No processes in browser | — (feature doesn't exist on this platform) |
+| `Application.Quit()` | Cannot close a browser tab | Hide UI / navigate via JS interop if truly needed |
+| Native plugins (`.dll`, `.so`, `.dylib` P/Invoke) | No native loading | `.jslib` JavaScript plugins with `[DllImport("__Internal")]` |
+| Microphone / Webcam APIs | Not supported by Unity WebGL | JS interop with browser MediaDevices if required |
+| `Screen.SetResolution` expectations | Canvas size is controlled by the page | Style the canvas via the web template |
+| `System.Globalization` heavy culture use | Cultures largely stripped; `double.Parse(s)` is culture-sensitive | Always parse/format wire numbers with `CultureInfo.InvariantCulture` |
+
+## `PlayerPrefs` / persistent data caveats
+
+- On WebGL both `PlayerPrefs` and `Application.persistentDataPath` are backed by IndexedDB and flushed **asynchronously** — data written right before the tab closes can be lost.
+- Call `PlayerPrefs.Save()` after important writes; keep persisted data small; treat local persistence as best-effort. Anything that matters belongs on the server.
+
+## Networking rules
+
+- All HTTP goes through `UnityWebRequest` (async, browser-fetch backed). Requests are subject to **CORS** — the server must send the right headers; there is no client-side workaround.
+- No custom certificate handling (browser owns TLS).
+
+## Agent checklist
+
+- [ ] No sockets, `HttpClient`, `Process`, or native P/Invoke (only `__Internal` jslib)
+- [ ] No `System.IO` on user paths; persistence via `PlayerPrefs` with `Save()` and best-effort expectations
+- [ ] All HTTP via `UnityWebRequest`; CORS handled server-side
+- [ ] Wire parsing/formatting uses `CultureInfo.InvariantCulture`

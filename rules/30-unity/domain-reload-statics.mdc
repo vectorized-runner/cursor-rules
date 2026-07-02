@@ -1,0 +1,65 @@
+---
+description: Domain reload is disabled — all static state must be reset via a static-reset hub
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Domain Reload Awareness
+
+Company projects run with **Enter Play Mode Options → Disable Domain Reload** enabled. Static fields, static events, singleton `Instance` refs, and `[InitializeOnLoad]` state **survive** between play sessions unless explicitly cleared. Write static-aware code.
+
+## The reset hub
+
+Every project has (or must get) a single `PlayModeStaticReset.cs` that clears all play-mode static state:
+
+```csharp
+public static class PlayModeStaticReset
+{
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics()
+    {
+        MyGame.ResetStatics();
+        SFXManager.ResetStatics();
+        CardAnimator.ClearAll();
+    }
+}
+```
+
+`SubsystemRegistration` runs before scene load on every play entry — including with domain reload off.
+
+## Rules
+
+1. **Every new static field, singleton `Instance`, static event, or static cache** gets an `internal static void ResetStatics()` (or `ClearCache()`) and a call in the reset hub. No exceptions.
+2. **Never rely on domain reload** to clear state. Assume the previous play session left stale references and subscribed handlers.
+3. **Static events** must be set to null in the reset method — stale handlers fire twice or reference destroyed objects.
+4. **`async void` / fire-and-forget tasks** started in play mode may complete after exit — cancel or guard on `this == null`.
+5. **Runtime-created `Material` / `Mesh` / `Texture`** held in static caches must be destroyed in the reset/clear method — leaked caches hold GPU memory across sessions.
+6. **Editor `[InitializeOnLoad]`** survives recompiles; wrap file I/O in try/catch on reload.
+
+```csharp
+// ❌ BAD — static event with no reset; handlers stack up each play session
+public static event Action<int> ScoreChanged;
+
+// ✅ GOOD — cleared in the hub
+public static event Action<int> ScoreChanged;
+
+internal static void ResetStatics()
+{
+    ScoreChanged = null;
+    _instance = null;
+}
+```
+
+## Stale-state symptoms (check these first when debugging)
+
+- Duplicate managers after re-entering play
+- Event handlers firing twice
+- Wrong materials/meshes from a previous session
+- Cached references to destroyed objects
+
+## Agent checklist
+
+- [ ] New static/singleton/cache state has a reset method
+- [ ] Reset method is wired into the project's `PlayModeStaticReset`
+- [ ] Static events nulled on reset
+- [ ] Play-mode re-entry works without restarting the editor

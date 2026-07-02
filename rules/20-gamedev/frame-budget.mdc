@@ -1,0 +1,88 @@
+---
+description: Frame budget — no unbounded per-frame work, amortize scans, events over polling
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Frame Budget
+
+Every frame has a fixed budget (16.6 ms at 60 fps, shared with rendering). No system may do **unbounded** work in a single frame.
+
+## No unbounded per-frame work
+
+Work proportional to "all entities", "all files", "whole grid" must be bounded or amortized.
+
+```csharp
+// ❌ BAD — O(n²) scan every frame
+private void Update()
+{
+    foreach (var a in _units)
+    {
+        foreach (var b in _units)
+        {
+            CheckAggro(a, b);
+        }
+    }
+}
+
+// ✅ GOOD — time-sliced: fixed number of checks per frame, round-robin cursor
+private int _scanCursor;
+private const int ChecksPerFrame = 32;
+
+private void Update()
+{
+    for (int step = 0; step < ChecksPerFrame; step++)
+    {
+        _scanCursor = (_scanCursor + 1) % _units.Count;
+        CheckAggroAround(_units[_scanCursor]);
+    }
+}
+```
+
+Amortization tools: round-robin cursors, work queues drained N-items-per-frame, coroutines yielding between chunks, dirty flags so only changed items are reprocessed.
+
+## No per-frame scene walks
+
+Never call these in `Update`/`FixedUpdate`/`LateUpdate` or per-message handlers:
+
+- `GameObject.Find`, `FindObjectOfType` / `FindAnyObjectByType`, `FindObjectsByType`
+- `GetComponentsInChildren` on large hierarchies
+- `Resources.*`, asset loads
+
+Resolve references once in `Awake`/`Start` (or via serialized fields) and cache them.
+
+## Events over polling
+
+If a value changes rarely, don't check it every frame — raise an event when it changes.
+
+```csharp
+// ❌ BAD — polling a rarely changing value, plus per-frame string alloc
+private void Update()
+{
+    _scoreLabel.text = $"Score: {_game.Score}";
+}
+
+// ✅ GOOD — update only on change
+private void OnEnable()
+{
+    _game.ScoreChanged += OnScoreChanged;
+}
+
+private void OnScoreChanged(int score)
+{
+    _scoreLabel.text = $"Score: {score.ToString()}";
+}
+```
+
+Polling is fine for genuinely continuous input (mouse position, axis values).
+
+## Spread startup cost
+
+Heavy initialization (pool pre-warm, grid building, deserialization) belongs in the loading phase — behind the loading screen — not lazily on first use mid-gameplay.
+
+## Agent checklist
+
+- [ ] No new per-frame work proportional to total entity/asset count without slicing
+- [ ] No Find/GetComponent/asset-load calls per frame; references cached
+- [ ] Rarely changing values drive UI via events, not `Update` polling
+- [ ] Heavy setup runs during loading, not on first use

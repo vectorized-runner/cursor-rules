@@ -1,0 +1,57 @@
+---
+description: Prefer structs and plain-old-data for gameplay state
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Structs and Plain-Old-Data
+
+Prefer **structs** for small, transient gameplay values, and **plain-old-data** shapes over encapsulation ceremony. Classes are for identity and lifetime (MonoBehaviours, long-lived systems); structs are for data.
+
+## When to use a struct
+
+- Small value types (roughly ≤ 32 bytes, a few fields): positions, damage events, grid cells, timers, stat blocks.
+- Transient per-frame data passed between systems.
+- Elements of bulk arrays/lists processed in loops (see data-oriented-design rule).
+
+```csharp
+// ✅ GOOD — plain-old-data struct, public fields, no ceremony
+public struct DamageEvent
+{
+    public int SourceId;
+    public int TargetId;
+    public float Amount;
+    public DamageKind Kind;
+}
+
+// ❌ BAD — class + properties + constructor ceremony for transient data
+public class DamageEvent
+{
+    public int SourceId { get; private set; }
+    public float Amount { get; private set; }
+
+    public DamageEvent(int sourceId, float amount) { ... }
+}
+```
+
+## Rules
+
+- Mark structs `readonly struct` when fields never mutate after construction — prevents defensive copies.
+- Pass large structs (> ~16 bytes) by `in` reference in hot paths: `void Apply(in DamageEvent e)`.
+- Public fields are **fine** on data structs. Do not wrap every field in a property; properties are for computed values or enforced invariants only.
+- No logic-bearing properties on hot data (getters that search, allocate, or log). Data is data.
+- Never mutate a struct returned by a property getter — you're mutating a copy. Store it in a local, mutate, write back, or expose a `ref` accessor.
+- Avoid `struct` implementing interfaces used through the interface type — that boxes (see allocation-discipline rule).
+
+## When a class is right
+
+- Unity objects (`MonoBehaviour`, `ScriptableObject`).
+- Long-lived systems with identity that many things reference.
+- Data that is genuinely shared and mutated through references.
+
+## Agent checklist
+
+- [ ] New small/transient data types are structs (readonly where possible), not classes
+- [ ] Data structs use public fields, no property/constructor ceremony
+- [ ] Large structs passed with `in` in hot paths
+- [ ] No struct-through-interface usage that boxes

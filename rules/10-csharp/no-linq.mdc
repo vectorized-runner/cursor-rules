@@ -1,0 +1,75 @@
+---
+description: No System.Linq in runtime code — allocations and IL2CPP bloat
+globs: **/*.cs
+alwaysApply: false
+---
+
+# No LINQ in Runtime Code
+
+Do **not** use `System.Linq` in runtime gameplay code. Every LINQ operator allocates (enumerators, closures, intermediate collections), and heavy generic instantiation bloats IL2CPP output — both are unacceptable in GC-constrained WebGL builds.
+
+## Concrete replacements
+
+```csharp
+// ❌ BAD — allocates enumerator + closure per call
+var alive = units.Where(u => u.Health > 0).ToList();
+var first = units.FirstOrDefault(u => u.Id == id);
+bool any = units.Any(u => u.IsBoss);
+int total = units.Sum(u => u.Score);
+
+// ✅ GOOD — zero-alloc loops
+_aliveBuffer.Clear();
+for (int i = 0; i < units.Count; i++)
+{
+    if (units[i].Health > 0)
+    {
+        _aliveBuffer.Add(units[i]);
+    }
+}
+
+Unit first = null;
+for (int i = 0; i < units.Count; i++)
+{
+    if (units[i].Id == id)
+    {
+        first = units[i];
+        break;
+    }
+}
+
+bool any = false;
+for (int i = 0; i < units.Count; i++)
+{
+    if (units[i].IsBoss)
+    {
+        any = true;
+        break;
+    }
+}
+
+int total = 0;
+for (int i = 0; i < units.Count; i++)
+{
+    total += units[i].Score;
+}
+```
+
+- `Where` + `ToList` → reused buffer list + `for` loop with `Clear()`
+- `First` / `FirstOrDefault` → `for` loop with `break`
+- `Any` / `All` → `for` loop with early exit
+- `Select` → write results into a pre-sized buffer
+- `OrderBy` → `List<T>.Sort(comparison)` with a **cached** (static readonly) comparison delegate
+- `Count(predicate)` → counter in a `for` loop
+
+## Allowed exceptions
+
+- **Editor code** (`Editor/` folders, editor asmdefs) — tooling clarity wins.
+- **Tests** — readability wins.
+- **One-time initialization** at load/bootstrap where the caller explicitly documents it is not a hot path — still prefer loops when trivial.
+
+## Agent checklist
+
+- [ ] No `using System.Linq;` in new or edited runtime files
+- [ ] Filtering/searching uses `for` loops with reused buffers
+- [ ] Sorting uses `List<T>.Sort` with a cached comparison
+- [ ] Any remaining LINQ is in editor code or tests only
