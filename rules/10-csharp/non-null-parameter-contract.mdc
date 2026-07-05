@@ -1,0 +1,69 @@
+---
+description: Reference-type parameters are non-null — validate at boundaries only; callees use directly or throw
+globs: **/*.cs
+alwaysApply: true
+---
+
+# Non-Null Parameter Contract
+
+When a reference type (class, interface) is passed to a method or constructor, the **callee assumes it is not null**. Do not add defensive null checks on that parameter inside the callee.
+
+## Callees: use the parameter directly
+
+```csharp
+// ❌ BAD — hides a caller bug
+public void ApplyEffect(Unit target, Effect effect)
+{
+    if (target == null)
+    {
+        return;
+    }
+    target.Apply(effect);
+}
+
+// ✅ GOOD — trust the contract
+public void ApplyEffect(Unit target, Effect effect)
+{
+    target.Apply(effect);
+}
+```
+
+No `if (x == null) return`, no log-then-return, no `?.` on a required parameter. If null is impossible, **do not check**.
+
+## Boundaries: validate once, fail fast
+
+Validate only where values enter the system — then never re-check downstream.
+
+| Boundary | Pattern |
+|----------|---------|
+| Constructor / init with required dep | `dep ?? throw new ArgumentNullException(nameof(dep))` |
+| `[SerializeField]` ref in `Awake` | `Debug.LogError` + disable, or throw — not silent skip |
+| Network / deserialize / user input | Validate in the handler; inner helpers assume non-null |
+
+```csharp
+// ✅ GOOD — boundary throws; every callee after this trusts _registry
+public UnitRegistry(IReadOnlyDictionary<int, Unit> units)
+{
+    _units = units ?? throw new ArgumentNullException(nameof(units));
+}
+```
+
+## When null is a real possibility
+
+Express it in the API — do not use a plain reference type plus a silent null check.
+
+- `TryGetUnit(int id, out Unit unit)` for may-be-absent
+- `Unit?` / explicit nullable only when absence is normal
+- Separate methods for optional vs required paths
+
+## Allowed exceptions (narrow)
+
+- **Lifecycle**: `if (this == null) return` after `await` (object destroyed mid-async)
+- **Legitimately optional serialized fields** checked once in `Awake`, not in every method
+- **`TryGetComponent` / lookup APIs** where absence is the expected outcome (see component-access rule)
+
+## Agent checklist
+
+- [ ] No new `if (param == null) return` on reference-type **parameters** in callees
+- [ ] Required deps validated once at boundary with throw (or LogError at init), not silent return
+- [ ] Optional values use `Try*`, nullable types, or explicit optional APIs — not defensive checks on plain refs

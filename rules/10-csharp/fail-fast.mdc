@@ -1,5 +1,5 @@
 ---
-description: Fail fast — no silent null returns, no returning null, throw with context
+description: Fail fast — non-null parameters, no silent null returns, throw with context
 globs: **/*.cs
 alwaysApply: false
 ---
@@ -7,6 +7,8 @@ alwaysApply: false
 # Fail Fast
 
 Bugs must surface at the source, loudly, during development — not as an NRE three frames later in unrelated code.
+
+Reference-type parameters are non-null by contract — see the **non-null-parameter-contract** rule. Validate at boundaries; callees use parameters directly.
 
 ## Callers: no silent bail on missing values
 
@@ -69,19 +71,23 @@ Returning null is allowed only when null is a genuine contract value: parse/dese
 
 ## No defensive null checks on internal code
 
-Trust internal invariants; use `Debug.Assert` for impossible states instead of scattering `if (x == null) return;`. Validate only at system boundaries (user input, network payloads, serialized scene refs).
+Trust internal invariants. Validate only at system boundaries (constructors, Awake for serialized refs, user input, network payloads). **Do not** re-validate the same ref in every method it is passed to.
+
+For fields guaranteed by init order, use directly. For "should never happen" states in development, `Debug.Assert` is OK — but prefer fixing the API contract over sprinkling asserts.
 
 ```csharp
 // ❌ BAD — hides the bug
 if (target == null) return;
 
-// ✅ GOOD — fails loudly in development
-Debug.Assert(target != null, "[Turret] Fire — target must be assigned before Fire()");
+// ✅ GOOD — fails loudly in development (field invariant, not a parameter)
+Debug.Assert(_target != null, "[Turret] Fire — target must be assigned before Fire()");
+_target.ApplyDamage(amount);
 ```
 
 ## Agent checklist
 
+- [ ] **No `if (param == null) return` on reference-type parameters** (see non-null-parameter-contract rule)
 - [ ] Expected-to-exist null → `Debug.LogError`/`LogWarning` with `[ClassName] Method — reason` context, never silent `return`
 - [ ] Must-exist lookups throw; may-be-absent lookups expose `Try*` — no `return null` for failure
-- [ ] No new defensive null checks on internal code paths; assert instead
+- [ ] No new defensive null checks on internal code paths; validate once at boundary
 - [ ] No silent `catch { }` — log at minimum
