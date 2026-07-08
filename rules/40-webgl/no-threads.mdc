@@ -1,21 +1,45 @@
 ---
-description: WebGL has no threads — no System.Threading, Task.Run, or Parallel
 globs: **/*.cs
 alwaysApply: false
+description: WebGL has no threads — no Task.Delay, Task.Run, or blocking waits
 ---
 
 # WebGL: No Threads
 
 Our builds target WebGL, which runs **single-threaded**. C# threading APIs either throw at runtime, deadlock, or silently degrade to main-thread execution. Write all code main-thread-only.
 
-## Banned
+## `Task.Delay` never completes on WebGL
 
-- `new Thread(...)`, `ThreadPool.QueueUserWorkItem`
-- `Task.Run(...)`, `Task.Factory.StartNew(...)`
-- `Parallel.For` / `Parallel.ForEach` / PLINQ (`AsParallel`)
-- `lock`, `Monitor`, `Mutex`, `SemaphoreSlim`, `Interlocked` patterns that *expect* concurrency (they compile, but they're dead weight and signal a design that assumes threads)
-- Blocking waits: `Task.Wait()`, `Task.Result`, `Thread.Sleep` — these **deadlock or freeze the browser tab**; there is no other thread to complete the work
-- `System.Timers.Timer` / `System.Threading.Timer` — use Unity time instead
+`Task.Delay` is backed by `System.Threading.Timer`. WebGL has no timer thread, so the continuation after `await Task.Delay(...)` is **never scheduled** — the game hangs forever on whatever screen was showing when the delay started.
+
+```csharp
+// ❌ BAD — hangs forever on WebGL (offline boot, reconnect backoff, AI pacing, etc.)
+await Task.Delay(250);
+await Task.Delay(500, token);
+
+// ✅ GOOD — player-loop timer; works on WebGL
+await Awaitable.WaitForSecondsAsync(0.25f, destroyCancellationToken);
+await MainThreadDelay.WaitMillisecondsAsync(500, token);
+```
+
+Use `MainThreadDelay` (shared helper) or `Awaitable.WaitForSecondsAsync` directly. After every `await` in a MonoBehaviour, guard `if (this == null) return`.
+
+`WebGlThreadingApiGuard` (build preprocess, `Assets/_MonkeyTiltCore/Scripts/Editor/Optimization/`) fails WebGL builds when runtime code matches banned threading APIs below.
+
+## Banned APIs (specific — not whole namespaces)
+
+`using System.Threading.Tasks` for `Task`-returning async methods is fine. `using System.Threading` for `CancellationToken` is fine. Ban these **calls**:
+
+| Banned | Why |
+|--------|-----|
+| `Task.Delay` | Timer never fires on WebGL |
+| `Thread.Sleep` | Blocks the only thread |
+| `Task.Wait()` / `.Result` / `GetAwaiter().GetResult()` | Deadlock — no thread to complete the task |
+| `Task.Run` / `Task.Factory.StartNew` | No thread pool |
+| `new Thread(...)` / `ThreadPool.QueueUserWorkItem` | No threads |
+| `Parallel.For` / `Parallel.ForEach` / PLINQ | No parallelism |
+| `new System.Threading.Timer` / `new System.Timers.Timer` | No timer thread |
+| `lock` / `Monitor` / `Mutex` / `SemaphoreSlim` expecting concurrency | Dead weight; signals threaded design |
 
 ```csharp
 // ❌ BAD — deadlocks on WebGL
@@ -42,13 +66,14 @@ private IEnumerator BuildGridSliced()
 |------|-----|
 | Async I/O (network, asset load) | `async`/`await` on the main thread, `UnityWebRequest`, coroutines |
 | Heavy CPU work | Time-slice across frames (coroutine / amortized loop — see frame-budget rule) |
-| Delays / timers | `Time.time` comparisons, coroutines, `Awaitable.WaitForSecondsAsync` |
+| Delays / timers | `MainThreadDelay`, `Awaitable.WaitForSecondsAsync`, coroutines, `Time.time` comparisons |
 | Parallel data crunch | C# Job System with Burst — jobs **run on the main thread** in WebGL but Burst still vectorizes; schedule and `Complete()` same frame, don't rely on overlap |
 
-`async`/`await` itself works on WebGL (single-threaded `SynchronizationContext`) — continuations run on the main thread. That's fine; blocking on tasks is what kills you.
+`async`/`await` itself works on WebGL (single-threaded `SynchronizationContext`) — continuations run on the main thread. That's fine; blocking on tasks and thread-pool timers are what kill you.
 
 ## Agent checklist
 
+- [ ] No `Task.Delay` — use `MainThreadDelay` or `Awaitable.WaitForSecondsAsync`
 - [ ] No `Thread`, `Task.Run`, `Parallel`, thread-pool, or timer APIs
 - [ ] No `.Result` / `.Wait()` / `Thread.Sleep` blocking calls
 - [ ] Heavy work time-sliced across frames, not "offloaded"

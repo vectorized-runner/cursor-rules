@@ -1,7 +1,7 @@
 ---
-description: Async and event hygiene — no async void, symmetric unsubscribe, no Task.Run
 globs: **/*.cs
 alwaysApply: false
+description: Async and event hygiene — no async void, symmetric unsubscribe, no Task.Run or Task.Delay
 ---
 
 # Async and Event Hygiene
@@ -9,6 +9,10 @@ alwaysApply: false
 ## No `Task.Run` — ever
 
 WebGL has no threads (see the webgl no-threads rule). `Task.Run`, `ConfigureAwait(false)`, and thread-pool continuations either fail or silently run on the main thread. Use coroutines or `Awaitable`/main-thread `async` for time-sliced work.
+
+## No `Task.Delay` — ever
+
+`Task.Delay` uses a thread-pool timer that never fires on WebGL — awaited delays hang forever. Use `MainThreadDelay.WaitAsync` / `WaitMillisecondsAsync` or `Awaitable.WaitForSecondsAsync` with a `CancellationToken` (e.g. `destroyCancellationToken`).
 
 ## `async void` is banned (one exception)
 
@@ -69,7 +73,7 @@ private void OnDisable()
 
 ## Agent checklist
 
-- [ ] No `Task.Run` or thread-pool APIs
+- [ ] No `Task.Run`, `Task.Delay`, or thread-pool APIs
 - [ ] No `async void` except top-level Unity/UI callback adapters with try/catch
 - [ ] Every `await` in a MonoBehaviour followed by lifetime guard or cancellation token
 - [ ] Every subscribe has a symmetric unsubscribe; no lambda subscriptions
