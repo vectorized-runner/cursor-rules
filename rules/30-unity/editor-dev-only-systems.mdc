@@ -1,0 +1,65 @@
+---
+description: Editor/dev-only components self-spawn at runtime; never serialize them on shipped prefabs/scenes
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Editor / Dev-Only Systems
+
+Components that only exist in the editor or development builds — dev overlays, debug HUDs, event logs, profiler widgets, in-scene test helpers — are typically guarded by `#if UNITY_EDITOR || DEVELOPMENT_BUILD`. Such a type **does not exist in a release player**, so it must **never** be serialized onto a prefab or scene that ships in a build.
+
+## Why a serialized reference breaks the release build
+
+When a release build loads a scene/prefab that references a stripped-out type, Unity cannot resolve the script and logs:
+
+```
+The referenced script (Your.Namespace.DevOverlay) on this Behaviour is missing!
+A scripted object (probably Your.Namespace.DevOverlay?) has a different serialization
+layout when loading. (Read 32 bytes but expected 48 bytes)
+```
+
+These are shipped-to-players errors that never appear in the editor (where the type compiles), so they slip through until someone opens the release console.
+
+## The pattern: self-spawn under the guard
+
+Guard the whole file with the `#if`, and have the component create itself at runtime via `[RuntimeInitializeOnLoadMethod]`. Author any UI/state in code (or load authored data by address at runtime) so nothing needs to be serialized on an asset.
+
+```csharp
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+using UnityEngine;
+
+public sealed class DevOverlay : MonoBehaviour
+{
+    // Self-spawns instead of being placed on a prefab/scene: this type is compiled out of
+    // release builds, so a serialized reference to it would become a "missing script" +
+    // serialization-layout error in the player. Idempotent — bails if one already exists.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void EnsureInstance()
+    {
+        if (FindAnyObjectByType<DevOverlay>(FindObjectsInactive.Include) != null)
+        {
+            return;
+        }
+
+        new GameObject(nameof(DevOverlay)).AddComponent<DevOverlay>();
+    }
+}
+#endif
+```
+
+- Make the bootstrap **idempotent** (`HasInstance` / `FindAnyObjectByType` guard) — `AfterSceneLoad` can fire on every scene load.
+- A dev-only *helper* that rides on another dev system can instead be `AddComponent`ed from that system's guarded bootstrap.
+- Wire providers/config the same way the rest of the project wires runtime bootstrap — behind the `#if`, not via inspector fields on a shipped asset.
+
+## Do not
+
+- Place a dev-guarded `MonoBehaviour` on a prefab or in a scene that ships (even "just for testing" — it gets committed and ships).
+- Rely on `[SerializeField]` inspector data for a dev-only component; provide sensible code defaults so a code-spawned instance is fully functional.
+- Leave an orphan prefab/scene whose only purpose was to carry a now-self-spawning dev component — delete it.
+
+## Agent checklist
+
+- [ ] No `#if UNITY_EDITOR || DEVELOPMENT_BUILD` MonoBehaviour serialized on a shipped prefab/scene
+- [ ] Dev-only systems self-spawn via `[RuntimeInitializeOnLoadMethod]`, guarded and idempotent
+- [ ] Dev components work from code defaults, not inspector-serialized data absent in release
+- [ ] Prefabs/scenes that existed only to host such a component are removed
