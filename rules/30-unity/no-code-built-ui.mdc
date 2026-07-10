@@ -1,0 +1,75 @@
+---
+description: UI screens/modals are Editor/MCP prefabs + thin views — never C# hierarchy
+globs: Assets/**/Presentation/**/*.cs,Assets/**/Prefabs/UI/**,Assets/**/Editor/Build*.cs,Assets/**/*PrefabBuilder*.cs
+alwaysApply: false
+---
+
+# No Code-Built UI
+
+**Default:** Player-facing UI lives in prefabs under `Assets/_MonkoGame/Prefabs/UI/` (or the project's UI prefab folder). C# binds `[SerializeField]` refs and handles callbacks only.
+
+## Before writing UI code — STOP
+
+| Task | Do this | Never do this |
+|------|---------|---------------|
+| New screen/modal | Unity MCP → prefab → thin `*View.cs` | `new GameObject` + `AddComponent<Image\|Button\|TextMeshProUGUI>` in runtime |
+| Redesign existing screen | Edit prefab via Unity MCP; migrate off builders | Extend `Build*ScreenAssets.cs` or add a new editor builder |
+| Dynamic list (lobby rows, chat) | `Instantiate(_rowPrefab)` from an authored row prefab | Build row hierarchy in a loop from code |
+| Dev-only overlay | Self-spawn per `editor-dev-only-systems` rule | Serialize a dev type on a shipped prefab |
+
+**Litmus test:** if you are calling `AddComponent<Image|Button|TextMeshProUGUI|RawImage|*LayoutGroup>` to lay out a screen, modal, or panel, you are in the wrong workflow.
+
+## Canonical examples (copy these)
+
+| Good | Path |
+|------|------|
+| Thin view | `Assets/_MonkoGame/Scripts/Runtime/Presentation/Screens/LobbyScreenView.cs` |
+| Row prefab + pool | `LobbyTableRow.cs` + `LobbyTableRow.prefab` |
+| Screen prefab | `Assets/_MonkoGame/Prefabs/UI/LobbyScreen.prefab` |
+
+## Legacy — do not copy or extend
+
+| Bad (legacy) | Path |
+|--------------|------|
+| Procedural HUD | `Presentation/Overlays/HUDController.cs` |
+| Procedural score rows | `Presentation/Screens/GameOverModalView.cs` (`BuildScoreRows`) |
+| Editor screen builder | `Editor/BuildLobbyScreenAssets.cs` |
+
+Migrate when touched; never extend.
+
+## Hard ban (runtime)
+
+- `new GameObject` + `AddComponent<Image|Button|TextMeshProUGUI|RawImage|*LayoutGroup>` for screens, modals, or panels
+- `Awake`/`Start` methods named `Build*`, `Create*Panel`, `Setup*UI` that author hierarchy
+- Editor scripts that spawn RectTransforms, Images, Buttons, TMP, layout groups, or UIDocument trees to produce screen/modal prefabs
+
+## Hard ban (editor)
+
+- New `Build*Screen*.cs`, `Build*Modal*.cs`, `Build*Overlay*.cs`, or `*ScreenAssets*.cs` for player UI
+- New `[MenuItem]` whose purpose is generating screen/modal UI hierarchy from code
+
+Existing rebuild builders (`BuildLobbyScreenAssets`, `BuildCharacterSelectScreenAssets`, etc.) are legacy — do not add siblings.
+
+## Allowed
+
+- Thin `*View.cs` with `[SerializeField]` refs — logic, state, callbacks only
+- **Unity MCP** to create/edit prefabs: `create_prefab`, `add_gameobject`, `add_ui_element`, `set_ui_text`, `set_rect_transform`, `add_ui_layout`
+- Scene wiring that only `Instantiate`s existing prefabs and assigns serialized references
+- Import/asset registration editor utilities (sprites, fonts, addressable groups) with no UI object creation
+- **Dynamic list rows** via `Instantiate(_rowPrefab)` — the row prefab is authored in Editor/MCP
+- Safe-area **infrastructure** (`FrostedPanel.CreateSafeAreaRoot`) — content still lives on the prefab under the safe-area child
+
+## Workflow for a new or redesigned screen
+
+1. Read the project's design spec / style guide for visual rules.
+2. Build or edit the prefab through **Unity MCP** (or in Editor); screenshot and compare to reference.
+3. Add/update the thin view script to bind serialized refs and handle user intent via callbacks.
+4. Place a prefab instance in the scene and wire references on the orchestrator/bootstrap component.
+
+## Agent checklist
+
+- [ ] No new editor or runtime code that constructs screen/modal UI trees
+- [ ] Prefab hierarchy created/edited via Unity MCP or Editor
+- [ ] View scripts are thin — serialized refs + behavior only
+- [ ] Dynamic content uses row prefab instances, not procedurally built panels
+- [ ] Copied `LobbyScreenView` pattern, not `HUDController` or `BuildLobbyScreenAssets`
