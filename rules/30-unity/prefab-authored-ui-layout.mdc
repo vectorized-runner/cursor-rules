@@ -1,0 +1,57 @@
+---
+description: Runtime UI layout lives on prefabs — code must not hardcode positions/sizes
+globs: **/Presentation/**/*.cs
+alwaysApply: false
+---
+
+# Prefab-Authored UI Layout
+
+Runtime UI scripts (`*View`, HUD, overlays) must **not** hardcode layout — positions, sizes, anchors, offsets, spacing, or font sizes. Author that on the **prefab** (Unity Editor / MCP). Runtime code drives **content and state** only.
+
+**Why:** Designers and developers tune prefabs in the Inspector. Hardcoded layout in C# silently overrides those edits at play time.
+
+This rule applies to **runtime** presentation code. **Editor** scripts that build or migrate prefabs may set layout in code — that is authoring, not play-mode override.
+
+## Runtime view contract
+
+- Hold `[SerializeField]` refs to prefab children; wire in the Inspector.
+- Update text, sprites, colors, visibility, interactable state, and data-bound values.
+- Do **not** assign `RectTransform` layout properties for static chrome.
+
+```csharp
+// ❌ BAD — play-mode layout overrides prefab edits
+rowRt.anchorMin = rowRt.anchorMax = new Vector2(0.5f, 0.5f);
+rowRt.anchoredPosition = new Vector2(RowCenterX, y);
+rowRt.sizeDelta = new Vector2(RowWidth, RowHeight);
+
+// ✅ GOOD — layout authored on prefab; code updates content
+[SerializeField] private TextMeshProUGUI _amountText;
+public void SetAmount(string text) => _amountText.text = text;
+```
+
+## Banned in runtime UI (static layout)
+
+- `anchoredPosition`, `sizeDelta`, `anchorMin`/`anchorMax`, `offsetMin`/`offsetMax`, `pivot`, `localPosition`/`localScale` on UI chrome for baseline placement
+- Layout constants (`RowWidth`, `FirstRowY`, `NameFontSize`, …) used to position or size elements
+- Runtime `new GameObject(...)` + `AddComponent<Image|Button|TextMeshProUGUI|LayoutGroup>` to build screen chrome (see also `no-code-built-ui` when present)
+
+## Allowed at runtime
+
+- **Content/state:** `.text`, `.color`, sprite/material swaps, `SetActive`, `interactable`, toggles
+- **Data-proportional sizing:** fill width/height from a **serialized** authored max (e.g. stat bar fill = `_barWidth * ratio`) — the bar track and max width live on the prefab
+- **Animations:** temporary transforms during tweens; restore or let the animation end
+- **Safe area / device insets:** dedicated `SafeArea` (or equivalent) components that adjust for notch/home indicator — not per-screen magic numbers
+- **Layout rebuild after content change:** `LayoutGroup` / `ContentSizeFitter` on the prefab; code may call `LayoutRebuilder.ForceRebuildLayoutImmediate` when dynamic text changes size — not replace authored spacing with constants
+- **Pooled/list rows:** instantiate a **row prefab** authored in Editor; bind data only — no per-row layout math in the view
+
+## Editor authoring is exempt
+
+`Editor/` scripts, menu items, and one-off prefab migration tools may construct hierarchy and set `RectTransform` values — that **is** how the prefab gets its layout.
+
+## Agent checklist
+
+- [ ] New/changed runtime UI keeps positions/sizes/anchors on the prefab, not in C#
+- [ ] View scripts only update content, visibility, and data-driven values
+- [ ] Dynamic lists use authored row prefabs, not code-built rows with hardcoded layout
+- [ ] Layout constants and `RectTransform` assignment removed from runtime paths (not moved to "config")
+- [ ] Editor prefab-build scripts are the only place that sets baseline UI layout in code
