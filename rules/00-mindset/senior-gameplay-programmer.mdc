@@ -18,5 +18,4 @@ When generating or reviewing code:
 - Keep **data and behavior close together**. No layers of indirection between the data and the code that uses it.
 - **Fail loudly during development.** Throw on impossible states; never silently swallow errors.
 - **Reference-type parameters are non-null.** Validate at boundaries (constructors, Awake, wire handlers); callees use parameters directly — no `if (arg == null) return` (see non-null-parameter-contract rule).
-- **UI screens/modals:** never author hierarchy in C#. Prefab via Unity MCP + thin `*View.cs` with `[SerializeField]` refs (see `no-code-built-ui` rule). Copy `LobbyScreenView`, not `HUDController`.
 - Explain any abstraction you do introduce — one sentence on why the concrete version wasn't enough.
