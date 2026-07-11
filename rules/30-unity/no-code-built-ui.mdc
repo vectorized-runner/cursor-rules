@@ -27,6 +27,14 @@ Any temporary editor script (migration, batch fix, initial generation) is delete
 
 A UI change is not done until visually verified: open the project's UI harness/review scene (or the target scene), feed representative data (including stress cases: long names, large values, full lists), take a screenshot, and **read the image** — check positions, overlap, truncation against the design reference. For wired behavior, enter play mode briefly and check the console; views must fail loudly on missing serialized refs, so wiring breaks are visible there. Attach the screenshot to your summary.
 
+## Rebuild menu items — derived output only
+
+A `Rebuild ...` editor menu item is legitimate **only when its output is derived data nobody hand-edits**: font atlases, asset catalogs/groups, baked textures, generated import settings, dev-only harness scenes. For those, "change the script, rerun the item" is the correct workflow.
+
+If the output is **authorable** (a prefab, scene content, or any asset someone might tune in the Inspector), the rebuilder is a second source of truth and every rerun destroys hand-authored edits — migrate the asset to prefab/Inspector authoring and **delete the rebuilder** (rule 4). Never extend an authored-output rebuilder to add a feature; edit the asset instead.
+
+**Agents run menu items themselves** via Unity MCP (`execute_menu_item`) and verify the console output — never ask the user to run a menu item as a task step.
+
 ## Enforcement
 
 Projects enforce 1 and 3 mechanically with a UI-authoring guard (editor script that scans presentation code and script names, logs errors on recompile, and fails builds — same pattern as other build-guard scripts). Pre-existing code-built UI goes in the guard's explicit grandfather list, which only ever shrinks.
