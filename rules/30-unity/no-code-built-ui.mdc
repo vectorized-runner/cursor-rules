@@ -9,7 +9,11 @@ The committed **prefab is the single source of truth** for every screen, modal, 
 
 ## 1. Edit prefabs, not runtime code
 
-UI layout (positions, sizes, anchors, hierarchy) is authored on the `.prefab` in the Unity Editor or via Unity MCP. Runtime view scripts only update **content and state**: text, sprites, colors, `SetActive`, `interactable`. Never assign `anchoredPosition` / `sizeDelta` / `anchorMin` / etc. or `AddComponent<Image|Button|TMP|LayoutGroup>` in runtime presentation code. Detailed contract and allowed exceptions (tweens, data-proportional fills, safe area): see the `prefab-authored-ui-layout` rule. A genuinely justified line carries `// layout-guard: allow — reason` on the same or previous line.
+UI layout (positions, sizes, anchors, hierarchy) is authored on the `.prefab` in the Unity Editor or via Unity MCP. Runtime view scripts only update **content and state**: text, sprites, colors, `SetActive`, `interactable`. Never assign `anchoredPosition` / `sizeDelta` / `anchorMin` / etc. or `AddComponent<Image|Button|TMP|LayoutGroup>` in runtime presentation code.
+
+**Static text is authoring too.** A label that never changes at runtime ("Leave Game?", button captions, column headers) is set on the prefab, not via `.text = "..."` in `Awake` — code re-assigning it silently overrides prefab edits, exactly like hardcoded layout. Runtime `.text` assignment is for **data-driven** values (scores, names, timers). State-driven literal selection (e.g. `"YOU WIN!"` vs `"YOU LOSE"`) is legitimate — mark it with an allow comment.
+
+Detailed contract and allowed exceptions (tweens, data-proportional fills, safe area): see the `prefab-authored-ui-layout` rule. A genuinely justified line carries `// layout-guard: allow — reason` on the same or previous line.
 
 ## 2. Prefab edit recipe (Unity MCP)
 

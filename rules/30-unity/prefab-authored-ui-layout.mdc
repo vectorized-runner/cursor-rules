@@ -37,7 +37,7 @@ public void SetAmount(string text) => _amountText.text = text;
 
 ## Allowed at runtime
 
-- **Content/state:** `.text`, `.color`, sprite/material swaps, `SetActive`, `interactable`, toggles
+- **Content/state:** `.text` for **data-driven** values (scores, names, timers), `.color`, sprite/material swaps, `SetActive`, `interactable`, toggles. Static labels that never change ("Leave Game?", button captions, headers) are authored on the prefab — assigning them from code overrides prefab edits just like hardcoded layout. State-driven literal selection (`"YOU WIN!"` vs `"YOU LOSE"`) is content, not authoring — mark it with an allow comment where a guard is active
 - **Data-proportional sizing:** fill width/height from a **serialized** authored max (e.g. stat bar fill = `_barWidth * ratio`) — the bar track and max width live on the prefab
 - **Animations:** temporary transforms during tweens; restore or let the animation end
 - **Safe area / device insets:** dedicated `SafeArea` (or equivalent) components that adjust for notch/home indicator — not per-screen magic numbers
