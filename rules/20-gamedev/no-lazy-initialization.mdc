@@ -1,0 +1,60 @@
+---
+description: No lazy initialization — resolve configs/assets/services eagerly at a deterministic startup point
+globs: **/*.cs
+alwaysApply: false
+---
+
+# No Lazy Initialization
+
+A config, asset, or service that the game **always needs** is resolved once at a deterministic startup point — never behind a null-check-per-access getter.
+
+Lazy getters cost a branch plus (for Unity objects) an engine-call `==` on **every access**, often in per-frame paths. Worse, they hide initialization order, move load hitches from startup to a random mid-gameplay first use, and delay missing-asset failures until whichever code path happens to touch the getter first.
+
+```csharp
+// ❌ BAD — pays a Unity null-check per access; fails at first use, mid-game
+public static HudConfig Hud
+{
+    get
+    {
+        if (_hud == null)
+        {
+            _hud = ResourceManager.Load<HudConfig>(HudConfig.Address);
+        }
+        return _hud;
+    }
+}
+
+// ✅ GOOD — loaded once before the first scene Awake; accessor is branch-free;
+// a missing asset throws at startup (fail fast), not mid-game
+public static HudConfig Hud { get; private set; }
+
+[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+static void Initialize()
+{
+    Hud = ResourceManager.Load<HudConfig>(HudConfig.Address);
+}
+```
+
+## Where to initialize
+
+| State | Init point |
+|---|---|
+| Static config/service caches | `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` |
+| Instance fields on a MonoBehaviour | `Awake` / `OnSingletonAwake` |
+| Scene references | Serialized fields, validated in `Awake` |
+
+Pair every eager static with the project's static-reset hub (see domain-reload rule) — `RuntimeInitializeOnLoadMethod` re-runs on each play entry, so re-initialization is automatic.
+
+## Allowed exceptions (narrow)
+
+- **Genuinely optional or rarely-hit heavy content** (streamed assets, on-demand levels) — use an explicit `Load`/`Try*` call at the decision point, not a silent null check inside a getter.
+- **Editor-only tooling** where startup cost matters more than per-access cost.
+
+If the object is used every session, "maybe we won't need it" is not an argument — load it up front and fail loudly if it's missing.
+
+## Agent checklist
+
+- [ ] No new `if (_x == null) _x = Load(...)` getters for always-needed state
+- [ ] Statics resolved in a `BeforeSceneLoad` initializer; instance fields in `Awake`
+- [ ] Missing required assets throw/log at startup, not on first use
+- [ ] Eager statics wired into the static-reset hub
