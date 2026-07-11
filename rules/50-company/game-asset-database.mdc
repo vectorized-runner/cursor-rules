@@ -17,11 +17,30 @@ Load project assets by **string address** through the shared `ResourceManager` +
 | `GameAssetDatabase` | Root catalog referencing all groups |
 | `ResourceManager` | Flattens groups into an address dictionary; runtime load API |
 
+## Address format — no forward slashes
+
+Addresses are **flat opaque keys**, not file paths. Do **not** use `/` when registering or loading.
+
+| Rule | Example |
+|------|---------|
+| Use `_` between words | `sfx_card_play`, `ui_avatar_mel`, `card_word_red` |
+| Prefix for `LoadAll` families | `emoji_monkey_preview`, `monkey_lookaround_idle` |
+| Never use `/` | ❌ `Audio/SFX/card_play`, `UI/Avatars/Mel` |
+
+**Why:** `ResourceManager.LoadAll<T>(prefix)` treats the character after the prefix as a sub-asset boundary only when it is `_` — not `/`. Slash addresses look like legacy `Resources/` paths but break prefix queries and invite path-style mistakes.
+
+```csharp
+// LoadAll("emoji_monkey") matches emoji_monkey_preview, emoji_monkey_atlas_tex — not emoji/monkey/preview
+var sprites = ResourceManager.LoadAll<Sprite>(EmojiAssetAddresses.Prefix(emojiKey));
+```
+
+Centralize address strings in a `*Addresses` or `const string` on the owning type (see `EmojiAssetAddresses`). When renaming a legacy slash address, update the `AssetGroup` entry and every call site in the same change.
+
 ## Loading at runtime
 
 ```csharp
 // Required asset — throws if address missing, null, or wrong type
-var clip = ResourceManager.Load<AudioClip>("Audio/SFX/card_play");
+var clip = ResourceManager.Load<AudioClip>("sfx_card_play");
 
 // Optional asset — check registration first, then load
 if (ResourceManager.Contains("special_fx"))
@@ -31,7 +50,7 @@ if (ResourceManager.Contains("special_fx"))
 }
 
 // Multiple sub-assets under a prefix
-var clips = ResourceManager.LoadAll<AnimationClip>("character_idle");
+var clips = ResourceManager.LoadAll<AnimationClip>("monkey_lookaround");
 ```
 
 - **Fail fast:** if an asset is expected for a code path, call `Load<T>` directly — it throws on missing address, null asset, or type mismatch. Do not catch and continue.
@@ -55,8 +74,17 @@ Runtime-generated resources (procedural textures, cloned materials) may be cache
 ## Registering a new asset
 
 1. Add an entry (address + reference) to the appropriate `AssetGroup` asset, chosen by category.
-2. Use the same address string at the call site.
-3. Keep addresses stable — they are the public API.
+2. Pick a flat `_`-separated address — **no `/`**.
+3. Use the same address string at the call site (prefer a shared constant or `*Addresses` helper).
+4. Keep addresses stable — they are the public API.
+
+```csharp
+// ❌ BAD — path-style address
+group.entries.Add(new AssetEntry { address = "UI/Avatars/Mel", asset = sprite });
+
+// ✅ GOOD — flat key
+group.entries.Add(new AssetEntry { address = "ui_avatar_mel", asset = sprite });
+```
 
 ## Allowed exception (bootstrap only)
 
@@ -65,6 +93,7 @@ The **only** permitted `Resources.Load` is inside `ResourceManager` itself, load
 ## Agent checklist
 
 - [ ] No new `Resources.Load` / `LoadAll` / `LoadAsync` calls
-- [ ] New assets registered in the correct `AssetGroup` with a stable address
+- [ ] New assets registered in the correct `AssetGroup` with a stable, **slash-free** address
+- [ ] Address uses `_` separators; `LoadAll` families share a common prefix
 - [ ] Expected assets use throwing `Load<T>`; optional paths use `Contains` first
 - [ ] No new caches of assets loaded via `ResourceManager`
