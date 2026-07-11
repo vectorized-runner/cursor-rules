@@ -1,0 +1,40 @@
+---
+description: UI is prefab-authored — no code-built chrome, no UI builder scripts, screenshot-verified
+alwaysApply: true
+---
+
+# No Code-Built UI — Prefab-Authored Pipeline
+
+The committed **prefab is the single source of truth** for every screen, modal, and overlay. Code that generates UI competes with the prefab and silently destroys hand-authored edits. These five rules are non-negotiable:
+
+## 1. Edit prefabs, not runtime code
+
+UI layout (positions, sizes, anchors, hierarchy) is authored on the `.prefab` in the Unity Editor or via Unity MCP. Runtime view scripts only update **content and state**: text, sprites, colors, `SetActive`, `interactable`. Never assign `anchoredPosition` / `sizeDelta` / `anchorMin` / etc. or `AddComponent<Image|Button|TMP|LayoutGroup>` in runtime presentation code. Detailed contract and allowed exceptions (tweens, data-proportional fills, safe area): see the `prefab-authored-ui-layout` rule. A genuinely justified line carries `// layout-guard: allow — reason` on the same or previous line.
+
+## 2. Prefab edit recipe (Unity MCP)
+
+`instantiate_prefab` into the open scene → inspect with `get_hierarchy` / `get_components` → edit with `set_rect_transform`, `set_ui_text`, `set_ui_image`, `update_component`, `add_ui_element` → `apply_prefab_overrides` → delete the scene instance. Editing an existing instance in the project's UI harness scene works the same way: edit, then `apply_prefab_overrides`.
+
+## 3. No UI builder scripts
+
+Never create editor scripts that generate screen/modal/overlay prefab hierarchy from C# (`Build*Screen*`, `Build*Modal*`, `Build*Overlay*`, `*ScreenAssets*`). Once a prefab exists, a builder script is a second source of truth that overwrites prefab edits when rerun. Harness/scene *assemblers* that only **instantiate** committed prefabs are fine — they can never destroy prefab content.
+
+## 4. One-off tools die in the same change
+
+Any temporary editor script (migration, batch fix, initial generation) is deleted in the same change that commits its output. Recovery is `git revert`, not regeneration. Don't rename a builder around the banned patterns — delete it.
+
+## 5. Screenshot or it didn't happen
+
+A UI change is not done until visually verified: open the project's UI harness/review scene (or the target scene), feed representative data (including stress cases: long names, large values, full lists), take a screenshot, and **read the image** — check positions, overlap, truncation against the design reference. For wired behavior, enter play mode briefly and check the console; views must fail loudly on missing serialized refs, so wiring breaks are visible there. Attach the screenshot to your summary.
+
+## Enforcement
+
+Projects enforce 1 and 3 mechanically with a UI-authoring guard (editor script that scans presentation code and script names, logs errors on recompile, and fails builds — same pattern as other build-guard scripts). Pre-existing code-built UI goes in the guard's explicit grandfather list, which only ever shrinks.
+
+## Agent checklist
+
+- [ ] Layout/hierarchy changes made on the prefab (MCP or Editor), not in C#
+- [ ] Runtime views only touch content/state; justified exceptions carry an allow comment
+- [ ] No new `Build*Screen*` / `Build*Modal*` / `Build*Overlay*` / `*ScreenAssets*` scripts
+- [ ] One-off tools deleted in the same change as their committed output
+- [ ] Harness screenshot taken, read, and attached before claiming done
