@@ -1,0 +1,60 @@
+---
+description: WebGL shipping checklist — audio unlock gate, iframe embed, mobile overlays, server headers
+globs: Assets/WebGLTemplates/**
+alwaysApply: false
+---
+
+# WebGL: Web Shipping Checklist
+
+Every WebGL build ships inside a browser (usually an iframe on a host site). These items are invisible in the Editor and only fail in production — verify each one per project before first deploy.
+
+## 1. Audio unlock gate (mandatory)
+
+Browsers suspend the AudioContext until a user gesture **inside the page/iframe**. Music started in `Awake`/`Start` is silent until the first click — there is no bypass.
+
+**Fix**: keep the HTML splash visible after `createUnityInstance` resolves and show a "TAP TO PLAY" button; the first click dismisses the splash and (via Unity's built-in document-level listener) resumes audio. Never hide the splash automatically.
+
+```js
+.then((unityInstance) => {
+  document.querySelector("#unity-loading-bar").style.display = "none";
+  document.querySelector("#tap-to-start").hidden = false;
+  loadingScreen.addEventListener("click", () => {
+    loadingScreen.style.display = "none";
+  }, { once: true });
+})
+```
+
+- BGM/ambience clips use **loadType: CompressedInMemory** — `DecompressOnLoad` clips can be inaudible on iOS in Silent Mode.
+
+## 2. Iframe embed contract (host site)
+
+- The host `<iframe>` must carry `allow="autoplay; fullscreen"` — without it, audio/fullscreen fail even after the tap gate.
+- Gestures must happen **inside** the iframe; clicks on the host page don't unlock audio.
+- Canvas size is owned by the page — no `Screen.SetResolution` expectations (see forbidden-apis rule).
+
+## 3. Mobile template essentials
+
+- Viewport meta (`width=device-width, user-scalable=no`) injected for mobile UAs.
+- Orientation overlay if the game is landscape/portrait-only (`screen.orientation.lock` is best-effort; the blocking overlay is the real guarantee).
+- `WebGLInput.captureAllKeyboardInput = false` on mobile so HTML/native keyboards work with input fields.
+- Consider capping `config.devicePixelRatio` in the template if high-DPI phones tank the framerate.
+
+## 4. Server / hosting headers
+
+- Build with **Brotli** compression; server must send matching `Content-Encoding: br` (see Unity's server config samples). Enable **Decompression Fallback** only when the server can't be configured — it's slower.
+- `.wasm` served with `Content-Type: application/wasm` so streaming compilation works.
+- CORS headers on any API the game calls — no client-side workaround exists.
+
+## 5. Runtime behavior
+
+- `Application.targetFrameRate = -1` on WebGL (let the browser drive vsync; a fixed value causes stutter).
+- Know the tab-hidden behavior: Unity auto-suspends audio/loop when the tab is hidden; anything time-critical (round timers, server sync) must tolerate resume-after-suspend.
+- `PlayerPrefs` is IndexedDB-backed and flushed async — call `Save()` after important writes (see forbidden-apis rule).
+
+## Agent checklist
+
+- [ ] Splash has a tap-to-play gate; audio never expected before first gesture
+- [ ] BGM clips are CompressedInMemory
+- [ ] Host-site iframe snippet documented with `allow="autoplay; fullscreen"`
+- [ ] Mobile: viewport meta, orientation overlay, keyboard capture handled
+- [ ] Brotli + correct Content-Encoding/Content-Type headers verified on the deployed URL
