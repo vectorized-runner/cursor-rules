@@ -43,7 +43,24 @@ Small `[JsonIgnore]` helpers that only restate the wire data (e.g. `Card.IsWild`
 
 ## Changing the contract
 
-When adding or changing wire types, match the backend spec exactly (field names, casing, optionality) and update only the contract folder — mapping/enrichment happens in gameplay systems, not in the DTO.
+When adding or changing wire types, match the backend spec exactly (field names, casing, optionality, and **which payload object owns the field**) and update only the contract folder — mapping/enrichment happens in gameplay systems, not in the DTO.
+
+### No client-convenience fields
+
+- Never add a serialized DTO field solely because client gameplay or presentation needs a convenient flag/value.
+- A wire field belongs only on the exact DTO whose backend payload object defines it. Do not copy an envelope, parent, sibling, or differently shaped action field onto another DTO.
+- Do not enrich a DTO in a mapper with fields that are absent from that DTO's canonical backend schema, even when the source value exists elsewhere in the same publication.
+- Before changing a DTO, verify its exact owner and shape in `Docs/backend/`. The presence of a field somewhere in a publication does not authorize adding it to every nested/action-specific DTO.
+- Derive client state outside `Gameplay/Contracts/`, using the authoritative gameplay state or the payload object that already owns the value.
+
+```csharp
+// ❌ BAD — game_over belongs to the enclosing action payload; this copy exists only for presentation
+[JsonProperty("game_over")]
+public bool IsGameOver;
+
+// ✅ GOOD — presentation derives the winning play from authoritative post-update gameplay state
+bool isWinningPlay = playerCardCounts.TryGetValue(data.PlayerId, out int count) && count == 0;
+```
 
 ## Agent checklist
 
@@ -51,3 +68,5 @@ When adding or changing wire types, match the backend spec exactly (field names,
 - [ ] Derived label/visual helpers live on a client system, not the DTO
 - [ ] Contract types reference no presentation namespaces or Unity UI types
 - [ ] New computed members reflect wire/game data, not client presentation choices
+- [ ] Every new serialized field is defined on this exact payload object in `Docs/backend/`
+- [ ] No DTO field was copied/enriched from an envelope or another payload for client convenience
