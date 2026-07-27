@@ -1,0 +1,45 @@
+---
+description: Required serialized refs are validated via the shared this.Require extension — no hand-rolled null-check blocks
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Required Serialized Refs — use `this.Require`
+
+Awake-boundary validation of required `[SerializeField]` references (see the non-null-parameter-contract rule) has exactly one implementation: the `RequiredRefs.Require` extension in the shared SDK (`MonkeyTilt.Core`, `mt-unity-sdk/Runtime/Utils/RequiredRefs.cs`).
+
+```csharp
+private void Awake()
+{
+    this.Require(_button, nameof(_button));
+    this.Require(_label, nameof(_label));
+}
+```
+
+It throws `MissingReferenceException` naming the component type, field, and object, and disables the component so a misconfigured scene/prefab fails loudly instead of half-running.
+
+## Banned: hand-rolled validation blocks
+
+```csharp
+// ❌ BAD — hand-rolled copy of Require: softer (LogError instead of throw),
+// doesn't name the field when several are checked, and duplicates the pattern
+if (_button == null || _label == null)
+{
+    Debug.LogError("[MonkoButtonView] Awake — refs not assigned");
+    enabled = false;
+    return;
+}
+```
+
+Projects enforce this mechanically with a convention guard (recompile + build preprocessor) that flags a null comparison followed shortly by `enabled = false` in runtime code.
+
+## Allowed exceptions (marker: `// ref-guard: allow — reason`)
+
+- **Lookup results, not serialized fields**: validating the result of `GetComponent*` / `Camera.main` / find-style resolution is a different boundary — `Require`'s "not wired" message would mislead. Keep the explicit check, add the marker.
+- **Legitimately optional serialized fields** are not validated at all — they carry a comment at the field declaration and are checked at each feature entry point (see the non-null-parameter-contract rule), never with `enabled = false`.
+
+## Agent checklist
+
+- [ ] Required `[SerializeField]` refs validated via `this.Require(_field, nameof(_field))` in `Awake`
+- [ ] No new `if (x == null) { LogError; enabled = false; }` blocks — that is a hand-rolled `Require`
+- [ ] Lookup-result validation keeps an explicit check with `// ref-guard: allow — reason`
