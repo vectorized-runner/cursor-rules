@@ -1,0 +1,50 @@
+---
+description: Ban GameObject.CreatePrimitive in runtime code — author geometry on prefabs/scenes instead
+globs: **/*.cs
+alwaysApply: false
+---
+
+# No Runtime CreatePrimitive
+
+Do **not** call `GameObject.CreatePrimitive` in runtime gameplay code. Author meshes, materials, colliders, and transforms on **prefabs or scene objects** instead; instantiate or toggle them at runtime.
+
+## Why
+
+- **Not editable** — geometry built from `CreatePrimitive` exists only in C#; artists and designers cannot tune it in the Inspector (see scene-inspector-authoring).
+- **Hidden colliders** — every primitive auto-adds a collider (`BoxCollider`, `SphereCollider`, `CapsuleCollider`, or `MeshCollider`). Code usually destroys it immediately, wasting work and inviting bugs.
+- **WebGL stripping** — with Strip Engine Code on, the auto-added collider type must be statically referenced or `AddComponent` throws at runtime. Banning `CreatePrimitive` removes this footgun entirely.
+
+## Banned in runtime
+
+```csharp
+// ❌ BAD — runtime primitive construction
+var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+Destroy(go.GetComponent<CapsuleCollider>());
+```
+
+## Use instead
+
+```csharp
+// ✅ GOOD — prefab authored in Editor; runtime only instantiates
+[SerializeField] private GameObject _placeholderPrefab;
+
+private void SpawnPlaceholder(Transform parent)
+{
+    Instantiate(_placeholderPrefab, parent);
+}
+```
+
+For static scene geometry, place the object in the scene/prefab hierarchy and hold a `[SerializeField]` reference — no spawn needed.
+
+## Allowed
+
+- **Editor scripts** (`Editor/` folders, editor asmdefs) — setup/migration tooling.
+- **Tests** — unless the project bans it there too.
+
+`RuntimeCreatePrimitiveGuard` (build preprocess in the shared core editor assembly, `Assets/_MonkeyTiltCore/Scripts/Editor/Optimization/`) fails **all** player builds when runtime code calls `CreatePrimitive`.
+
+## Agent checklist
+
+- [ ] No `GameObject.CreatePrimitive` in runtime scripts
+- [ ] New 3D chrome/placeholders authored as prefab or scene object
+- [ ] Runtime code instantiates or enables authored objects; does not construct Unity primitives from code
