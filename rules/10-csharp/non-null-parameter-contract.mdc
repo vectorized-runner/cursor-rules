@@ -48,6 +48,50 @@ public UnitRegistry(IReadOnlyDictionary<int, Unit> units)
 }
 ```
 
+## Serialized fields: validate once in Awake, then trust
+
+The same contract applies to `[SerializeField]` references — the boundary is `Awake`.
+
+- **A `[SerializeField]` reference used unguarded anywhere in the class is required**: validate it once in `Awake` (throw / `Debug.LogError` + disable), then use it directly everywhere. No `if (_field != null)` or `_field?.` on a field that some other method already dereferences bare — that's the worst of both worlds: it still NREs on the unguarded path, and it hides the misconfiguration on the guarded one.
+
+```csharp
+private void Awake()
+{
+    if (_hudController == null)
+    {
+        enabled = false;
+        throw new MissingReferenceException($"[GameScreen] '_hudController' is not wired on '{name}'.");
+    }
+}
+```
+
+- **Don't create maybe-null fields via lazy resolution.** A field populated on demand by `Ensure*()` / `FindFirstObjectByType` / `GetComponent` fallbacks forces every method to consider its nullness — that pattern is where scattered null checks come from. Resolve dependencies at a boundary (`Awake` or an explicit `Init`) and fail loudly if missing. If a ref is genuinely optional, say so with a comment at the field and check it at each feature entry point, not defensively everywhere.
+
+## Downstream code trusts boundary-validated values
+
+Once a value passes its boundary check, everything after it uses the value directly. A handler that validated a payload does not hand the maybe-null onward for helpers to re-check:
+
+```csharp
+// ✅ GOOD — handler is the boundary; helpers trust their parameters
+private void HandleTurnChange(TableUpdate update)
+{
+    var data = update.GetData<TurnChangeData>();
+    if (data == null)
+    {
+        Debug.LogError($"[Game] HandleTurnChange — payload deserialized to null (seq={update.ServerSeq})");
+        return;
+    }
+    ApplyTurn(data);          // ApplyTurn does NOT re-check data
+}
+
+// ❌ BAD — ApplyTurn re-checks what the handler already guaranteed
+private void ApplyTurn(TurnChangeData data)
+{
+    if (data == null) return;
+    ...
+}
+```
+
 ## When null is a real possibility
 
 Express it in the API — do not use a plain reference type plus a silent null check.
@@ -66,4 +110,6 @@ Express it in the API — do not use a plain reference type plus a silent null c
 
 - [ ] No new `if (param == null) return` on reference-type **parameters** in callees
 - [ ] Required deps validated once at boundary with throw (or LogError at init), not silent return
+- [ ] `[SerializeField]` refs used unguarded anywhere are Awake-validated and never null-checked elsewhere
+- [ ] No lazy `Ensure*` / `FindFirstObjectByType` field resolution producing maybe-null fields
 - [ ] Optional values use `Try*`, nullable types, or explicit optional APIs — not defensive checks on plain refs
