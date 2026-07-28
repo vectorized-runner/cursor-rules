@@ -1,0 +1,82 @@
+---
+description: Parse raw external data once at the ingestion boundary into typed models — one source of truth, no re-parsing in consumers, no parallel collections
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Parse at the Boundary — One Source of Truth
+
+Raw external data (wire strings, JSON, PlayerPrefs, config text) is converted to typed domain values **once**, at the ingestion boundary. Consumers receive enums and typed models — they never re-parse strings or re-derive values. Fallback/default decisions for invalid data are made at that same boundary, in one place.
+
+## The two failure modes this prevents
+
+1. **Late parsing.** A wire string (`"character_model"`, `"kind"`) flows deep into consuming code, and every use site does its own `TryParse` + fallback. The parse logic and the fallback decision get duplicated, drift apart, and fail differently in different screens.
+2. **Duplicated state.** The raw DTO list is stored *and* per-entity flags live in parallel collections (`HashSet<string> readyIds` next to the roster list, `Dictionary<string,int> counts` keyed by the same ids). Every mutation must remember to touch all of them; removal forgets one and leaves stale state behind.
+
+## BAD — consumer re-parses, state lives in three places
+
+```csharp
+class GameState
+{
+    public List<UnitDto> units;                    // raw wire DTOs stored
+    public HashSet<string> stunnedIds = new();     // parallel map #1
+    public Dictionary<string, int> hp = new();     // parallel map #2
+}
+
+void SpawnUnit(UnitDto dto)  // deep in presentation
+{
+    if (!Enum.TryParse(dto.Kind, out UnitKind kind))
+    {
+        kind = UnitKind.Grunt; // local fallback, duplicated at every use site
+    }
+    bool stunned = state.stunnedIds.Contains(dto.Id); // hope it was kept in sync
+}
+```
+
+## GOOD — one typed model, converted once
+
+```csharp
+sealed class Unit
+{
+    public string Id;
+    public UnitKind Kind;   // parsed once at ingestion; fallback decided there
+    public bool IsStunned;  // folded in — no parallel set
+    public int Hp;
+}
+
+// The ONLY place UnitDto becomes Unit; raw DTO is discarded after conversion.
+Unit Ingest(UnitDto dto)
+{
+    if (!Enum.TryParse(dto.Kind, out UnitKind kind))
+    {
+        Debug.LogError($"[GameState] Invalid kind '{dto.Kind}' for unit '{dto.Id}'; falling back to Grunt.");
+        kind = UnitKind.Grunt;
+    }
+    return new Unit { Id = dto.Id, Kind = kind, Hp = dto.Hp };
+}
+
+void SpawnUnit(Unit unit) => Spawn(unit.Kind); // no TryParse anywhere downstream
+```
+
+## Rules
+
+- **Store only the converted model.** The DTO exists to deserialize; convert and discard. Never keep the raw DTO list alongside the typed model — two rosters drift.
+- **No parallel per-entity collections.** State keyed by the same id as an entity list belongs *on the entity* (`IsReady`, `CardCount` fields), not in a side `HashSet`/`Dictionary` that must be manually kept "in lockstep".
+- **Derived data has one recompute point.** Values computed from the collection (disambiguated display names, sort keys, aggregates) are rewritten by exactly one helper called at the end of every mutation — never patched piecemeal at individual call sites.
+- **Fallbacks are boundary decisions.** Invalid/missing input is logged and defaulted where it enters; consumers never carry their own fallback.
+- **Changed signatures carry the type.** If a method needs a `UnitKind`, its parameter is `UnitKind` — not a string the callee validates.
+
+## Allowed exceptions
+
+- DTO types themselves at the (de)serialization boundary — they are the wire format and stay string-based.
+- Code playing the *server/storage* role (local sim servers, PlayerPrefs persistence) — strings are its wire format.
+- Caches explicitly serving entities that no longer exist (departed-player name cache for a game-over screen). Document them as caches; never read them for live entities.
+- Logging/diagnostics of the raw value at the boundary.
+
+## Agent checklist
+
+- [ ] Every `TryParse`/`Enum.Parse` of external data sits at an ingestion point, not in a consumer
+- [ ] No raw DTO stored alongside its typed model
+- [ ] No new `HashSet`/`Dictionary` keyed by entity id next to an entity list — fold into the entity
+- [ ] Derived data recomputed by one helper on mutation, never patched at call sites
+- [ ] Fallback-on-invalid decided (and logged) once at the boundary
