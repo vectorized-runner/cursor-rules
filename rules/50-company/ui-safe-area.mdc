@@ -1,0 +1,71 @@
+---
+description: Keeping interactive UI inside the device safe area (notches, rounded corners, home indicator) — SafeArea component and layout contract
+globs: **/*.cs
+alwaysApply: false
+---
+
+# UI Safe Area — `SafeArea`
+
+Every player-facing screen must keep interactive content inside the device safe
+area. The reusable pieces live in shared core (`MonkeyTilt.Shared`,
+`Scripts/Runtime/Core/SafeArea.cs`):
+
+- `SafeArea` — a `MonoBehaviour` that drives its own `RectTransform` from the
+  device safe area. Drop it on a full-stretch child of any Canvas.
+- `SafeArea.CreateRoot(Transform parent)` — creates a full-stretch child
+  carrying `SafeArea`; parent interactive content under the returned rect.
+
+## The layout contract
+
+`Canvas → [full-bleed background] + [SafeArea → interactive content]`
+
+- **Interactive content** (buttons, text, panels, edge-anchored HUD chrome)
+  goes **inside** the safe-area root.
+- **Full-bleed visuals** (dim/blur backdrops, full-screen modal scrims,
+  decorative effects) stay on the parent **before** the safe-area child, so
+  they still cover notches and the home indicator. Never wrap a full-screen
+  scrim in the safe area — it would letterbox under the notch.
+
+## Pattern for a new screen (prefab-authored)
+
+Author the hierarchy on the prefab in Unity MCP/Editor. The view script only
+holds refs — it does **not** build panels in `Awake`.
+
+```csharp
+// On the screen prefab (Inspector wiring):
+// Canvas
+//   ├── Backdrop          (full-bleed dim/blur — outside safe area)
+//   └── SafeAreaRoot      (child with SafeArea component)
+//         └── ContentRoot ([SerializeField] _contentRoot — buttons, text, panels)
+
+[SerializeField] private RectTransform _contentRoot; // safe-area child; hierarchy authored on prefab
+
+private void Awake()
+{
+    WireButtons(); // callbacks only — no Build* / Create*Panel methods
+}
+```
+
+When bootstrapping a screen that is not yet prefab-migrated,
+`SafeArea.CreateRoot` may run once at runtime to add the safe-area wrapper —
+but **content under it must still come from the prefab**, not from procedural
+`AddComponent` layout code. See the `no-code-built-ui` rule.
+
+## WebGL: the browser bridge
+
+`Screen.safeArea` is **not implemented on the Web platform** — it always
+returns the full canvas. `SafeArea` bridges the browser's CSS
+`env(safe-area-inset-*)` values in via `Plugins/WebGL/WebSafeArea.jslib`
+(extern `MonkeyTiltGetSafeAreaInsets`). This requires **`viewport-fit=cover`**
+in the hosting page's viewport meta tag, otherwise the insets are always 0.
+Don't add a second jslib per project — the shared one is the bridge.
+
+## Rules
+
+- New screens never anchor interactive elements directly to the raw canvas —
+  go through a safe-area root (`SafeArea` component on a prefab child, or
+  `SafeArea.CreateRoot` in legacy code-built screens).
+- `SafeArea` polls in `Update` (no Unity safe-area-changed event exists) and
+  allocates nothing — don't "optimize" it into per-frame work or add
+  allocations.
+- Dev/debug overlays are exempt.
