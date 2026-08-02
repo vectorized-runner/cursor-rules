@@ -7,8 +7,8 @@ alwaysApply: false
 # UI Safe Area — `SafeArea`
 
 Every player-facing screen must keep interactive content inside the device safe
-area. The reusable pieces live in shared core (`MonkeyTilt.Shared`,
-`Scripts/Runtime/Core/SafeArea.cs`):
+area. The reusable pieces live in the shared screen assembly
+(`MonkeyTilt.Shared.Screen`, namespace `MonkeyTilt.Shared`):
 
 - `SafeArea` — a `MonoBehaviour` that drives its own `RectTransform` from the
   device safe area. Drop it on a full-stretch child of any Canvas.
@@ -55,8 +55,9 @@ but **content under it must still come from the prefab**, not from procedural
 
 `Screen.safeArea` is **not implemented on the Web platform** — it always
 returns the full canvas. `SafeArea` bridges the browser's CSS
-`env(safe-area-inset-*)` values in via `Plugins/WebGL/WebSafeArea.jslib`
-(extern `MonkeyTiltGetSafeAreaInsets`). This requires **`viewport-fit=cover`**
+`env(safe-area-inset-*)` values in via the `Plugins/WebGL/WebSafeArea.jslib`
+that ships inside that same assembly's folder (extern
+`MonkeyTiltGetSafeAreaInsets`). This requires **`viewport-fit=cover`**
 in the hosting page's viewport meta tag, otherwise the insets are always 0.
 Don't add a second jslib per project — the shared one is the bridge.
 

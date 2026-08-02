@@ -41,7 +41,7 @@ For static scene geometry, place the object in the scene/prefab hierarchy and ho
 - **Editor scripts** (`Editor/` folders, editor asmdefs) — setup/migration tooling.
 - **Tests** — unless the project bans it there too.
 
-`RuntimeCreatePrimitiveGuard` (build preprocess in the shared core editor assembly, `Assets/_MonkeyTiltCore/Scripts/Editor/Optimization/`) fails **all** player builds when runtime code calls `CreatePrimitive`.
+`RuntimeCreatePrimitiveGuard` (build preprocess in the shared optimization editor assembly, `MonkeyTilt.Shared.Optimization.Editor`) fails **all** player builds when runtime code calls `CreatePrimitive`.
 
 ## Agent checklist
 

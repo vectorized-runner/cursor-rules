@@ -35,6 +35,7 @@ Rules are organized general → specific. A more specific layer may **tighten** 
 - **Mandatory sections:** short principle statement, a concrete BAD/GOOD code pair, a narrow allowed-exceptions list, and an **Agent checklist** at the bottom.
 - **Keep it under ~120 lines.** Long rules get skimmed; split instead.
 - **Be concrete.** "Avoid interfaces for single implementations" beats "don't over-abstract". Name the banned API, show the replacement.
+- **Point at assemblies and types, never `Assets/...` paths.** A path is project-specific and goes stale the first time a project reorganises a folder — and a stale path in a shared rule reads as an instruction to recreate it. `MonkeyTilt.Shared.Core` identifies the same code in every project and is greppable; `Assets/_MonkeyTiltShared/Core/RequiredRefs.cs` is true in one repo until someone moves it.
 
 ## Project-specific rules
 
