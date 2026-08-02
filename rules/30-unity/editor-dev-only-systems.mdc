@@ -26,6 +26,16 @@ That is the constraint. There are two ways to satisfy it — pick by whether the
 
 Author the tool on a prefab like any other content, and delete it from the scene during non-development builds with `IProcessSceneWithReport`. This runs on the build's temporary copy of the scene, so committed scenes keep their instance and only the shipped player loses it.
 
+Put a **marker component on the prefab root** and strip on that. The marker is the whole mechanism — an empty `MonoBehaviour` under the same compile guard as the tools it marks:
+
+```csharp
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+public sealed class DevToolsRoot : MonoBehaviour
+{
+}
+#endif
+```
+
 ```csharp
 public sealed class DevToolsSceneStripper : IProcessSceneWithReport
 {
@@ -42,7 +52,7 @@ public sealed class DevToolsSceneStripper : IProcessSceneWithReport
         GameObject[] roots = scene.GetRootGameObjects();
         for (int i = 0; i < roots.Length; i++)
         {
-            if (roots[i].GetComponentInChildren<DevOverlay>(true) != null)
+            if (roots[i].GetComponentInChildren<DevToolsRoot>(true) != null)
             {
                 Object.DestroyImmediate(roots[i]);
             }
@@ -52,9 +62,10 @@ public sealed class DevToolsSceneStripper : IProcessSceneWithReport
 ```
 
 - The `report == null` early-out is load-bearing: Unity also invokes scene processors when entering play mode, and stripping there would delete the tools you just dropped in.
-- **Match on component type, not GameObject name** — a renamed instance must still be caught.
-- **Every component sharing a dev prefab needs the same `#if` guard.** A component guarded by only `UNITY_EDITOR` sitting on a prefab next to `UNITY_EDITOR || DEVELOPMENT_BUILD` siblings becomes a missing script in *development* player builds. Widen the narrow one and let it no-op outside the editor.
-- Adding a new dev system to an existing dev prefab means adding its type to the stripper too. Keep that instruction next to the stripper.
+- **Match on a component type, never on GameObject name** — a renamed instance must still be caught.
+- **Prefer one marker over a list of every dev type.** Listing types works right up until someone adds a dev system and forgets the stripper — and that failure is invisible in the editor, surfacing only as missing scripts in a shipped player's console. A marker makes "on the dev prefab" and "stripped" the same fact.
+- **Every component sharing a dev prefab needs the same `#if` guard**, marker included. A component guarded by only `UNITY_EDITOR` sitting on a prefab next to `UNITY_EDITOR || DEVELOPMENT_BUILD` siblings becomes a missing script in *development* player builds. Widen the narrow one and let it no-op outside the editor.
+- Adding a dev system to an existing dev prefab then needs no stripper edit at all — just put it under the marked root.
 
 This is what makes the tool draggable: it can be committed into a scene without ever reaching a player, and its UI is authored in the Inspector like everything else (see the `no-code-built-ui` rule) instead of being built in C#.
 
@@ -110,7 +121,7 @@ Self-spawn is the cheaper answer for one small helper. Once a tool grows UI, or 
 ## Agent checklist
 
 - [ ] No `#if UNITY_EDITOR || DEVELOPMENT_BUILD` MonoBehaviour reachable from a shipped prefab/scene without a stripper
-- [ ] Prefab-hosted dev tools: all components share the same guard, and each type is registered in the stripper
+- [ ] Prefab-hosted dev tools: all components share the same guard, and the root carries the stripper's marker
 - [ ] Stripper checks `report == null` (play mode) and `BuildOptions.Development`, and matches by type
 - [ ] Self-spawned dev systems are guarded, idempotent, and work from code defaults
 - [ ] Prefabs/scenes that existed only to host a now-self-spawning dev component are removed
