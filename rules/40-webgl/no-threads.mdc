@@ -24,7 +24,7 @@ await MainThreadDelay.WaitMillisecondsAsync(500, token);
 
 Use `MainThreadDelay` (`MonkeyTilt.Shared.Core`) or `Awaitable.WaitForSecondsAsync` directly. After every `await` in a MonoBehaviour, guard `if (this == null) return`.
 
-`WebGlThreadingApiGuard` (build preprocess, `MonkeyTilt.Shared.Optimization.Editor`) fails WebGL builds when runtime code matches banned threading APIs below.
+`WebGlThreadingApiGuard` (build preprocess, `MonkeyTilt.Shared.Guards.Editor`) fails WebGL builds when runtime code matches banned threading APIs below.
 
 ## Banned APIs (specific — not whole namespaces)
 
