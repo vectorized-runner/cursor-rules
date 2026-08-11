@@ -7,15 +7,15 @@ alwaysApply: false
 # Modal Input Blocking — `ModalInputBlocker`
 
 Table world input — hand cards, seat/table emoji targets — is driven by **camera
-physics raycasts** gated by `TableInputGate` (shared core, `MonkeyTilt.Shared`),
-not by uGUI raycasts. A full-screen backdrop Image blocks clicks on UI but does
-**nothing** to world input: a modal that never pushes the gate lets players
-hover/send emojis and click cards straight through it. This was a recurring
-class of bug — every new modal had to remember paired push/pop calls.
+physics raycasts** gated by `TableInputGate` (`MonkeyTilt.Shared.InputGating`,
+namespace `MonkeyTilt.Shared`), not by uGUI raycasts. A full-screen backdrop Image
+blocks clicks on UI but does **nothing** to world input: a modal that never pushes
+the gate lets players hover/send emojis and click cards straight through it. This
+was a recurring class of bug — every new modal had to remember paired push/pop calls.
 
 ## The pattern: one component, zero code
 
-Author `ModalInputBlocker` (shared core, next to `TableInputGate`) on the
+Author `ModalInputBlocker` (same assembly, next to `TableInputGate`) on the
 **root of every modal/overlay prefab that shows and hides via `SetActive`**.
 It calls `TableInputGate.PushModal()` in `OnEnable` and `PopModal()` in
 `OnDisable`, so world input is blocked for exactly the object's active
@@ -45,8 +45,9 @@ public void Show() { gameObject.SetActive(true); }
   in the scene and self-hide at load.
 - Stacking is safe — the gate is depth-counted; two open modals = depth 2.
 - Pointer-over blocking for non-modal UI (e.g. draggable chat) is a different
-  mechanism: `WorldInputUiBlocker`, which blocks only while the pointer is over
-  the marked subtree. Don't use it to gate modals, and vice versa.
+  mechanism: `WorldInputUiBlocker` (also `MonkeyTilt.Shared.InputGating`), which
+  blocks only while the pointer is over the marked subtree. Don't use it to gate
+  modals, and vice versa.
 - Debugging: `TableInputGate.GetEmojiGateStatus().Describe()` /
   `GetCardsGateStatus().Describe()` say exactly why input is blocked.
 

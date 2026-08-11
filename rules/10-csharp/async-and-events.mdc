@@ -1,7 +1,7 @@
 ---
+description: Async and event hygiene — no async void, symmetric unsubscribe, no Task.Run or Task.Delay
 globs: **/*.cs
 alwaysApply: false
-description: Async and event hygiene — no async void, symmetric unsubscribe, no Task.Run or Task.Delay
 ---
 
 # Async and Event Hygiene

@@ -19,23 +19,24 @@ Rules are organized general → specific. A more specific layer may **tighten** 
 
 | Folder | Layer | Contents |
 |--------|-------|----------|
-| `rules/00-mindset/` | Mantra | Senior gameplay programmer mindset — always applied |
+| `rules/00-mindset/` | Mantra | Senior gameplay programmer mindset |
 | `rules/10-csharp/` | Language | C# rules: no LINQ, fail-fast, no reflection, allocation discipline, structs, style |
 | `rules/20-gamedev/` | Game programming | No premature abstraction, data-oriented design, pooling, frame budget |
 | `rules/30-unity/` | Engine | Domain reload statics, Unity.Mathematics, Unity.Collections, component access, update-loop hygiene |
 | `rules/40-webgl/` | Platform | No threads, forbidden APIs, build size, GC/memory constraints |
-| `rules/50-company/` | Infrastructure | SingletonBehaviour, ResourceManager/GameAssetDatabase, asmdef architecture, pure DTO contracts, modal input blocking, UI safe area |
+| `rules/50-company/` | Infrastructure | SharedSingletonBehaviour / game SingletonBehaviour, ResourceManager/GameAssetDatabase, asmdef architecture, pure DTO contracts, modal input blocking, UI safe area |
 | `skills/` | Procedures | On-demand workflows: GC allocation audit, WebGL build-size audit |
 
 ## Contributing a rule
 
 - **One concern per file.** If a rule covers two topics, split it.
 - **Place it in the correct layer folder.** Language-level → `10-csharp`, engine-level → `30-unity`, etc.
-- **Frontmatter:** `description` (one strong line — the agent uses it to decide relevance), `globs` (usually `**/*.cs`), `alwaysApply: false` (only `00-mindset` is always-on).
+- **Frontmatter:** `description` (one strong line — the agent uses it to decide relevance), `globs` (usually `**/*.cs`), `alwaysApply` (`true`/`false`). Do not restate which files use `alwaysApply: true` outside those files — frontmatter is authoritative; run `scripts/lint-rules.sh` after edits.
 - **Mandatory sections:** short principle statement, a concrete BAD/GOOD code pair, a narrow allowed-exceptions list, and an **Agent checklist** at the bottom.
 - **Keep it under ~120 lines.** Long rules get skimmed; split instead.
 - **Be concrete.** "Avoid interfaces for single implementations" beats "don't over-abstract". Name the banned API, show the replacement.
 - **Point at assemblies and types, never `Assets/...` paths.** A path is project-specific and goes stale the first time a project reorganises a folder — and a stale path in a shared rule reads as an instruction to recreate it. `MonkeyTilt.Shared.Core` identifies the same code in every project and is greppable; `Assets/_MonkeyTiltShared/Core/RequiredRefs.cs` is true in one repo until someone moves it.
+- **Verify Shared names before writing them.** There is no umbrella runtime assembly named `MonkeyTilt.Shared` — every feature has its own asmdef (`MonkeyTilt.Shared.Core`, `.AssetCatalog`, `.Screen`, `.InputGating`, …). Type names must match the class (`SharedSingletonBehaviour`, not a paraphrased `SingletonBehaviour` when describing Shared). When renaming a Shared type or assembly, update every rule that mentions it in the same change, then run `scripts/lint-rules.sh`.
 
 ## Project-specific rules
 

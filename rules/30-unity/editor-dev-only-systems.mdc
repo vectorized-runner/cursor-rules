@@ -6,27 +6,15 @@ alwaysApply: false
 
 # Editor / Dev-Only Systems
 
-Components that only exist in the editor or development builds — dev overlays, debug HUDs, event logs, profiler widgets, in-scene test helpers — are typically guarded by `#if UNITY_EDITOR || DEVELOPMENT_BUILD`. Such a type **does not exist in a release player**, so a release build must never *load* a prefab or scene that still references it.
+Types guarded by `#if UNITY_EDITOR || DEVELOPMENT_BUILD` **do not exist in a release player**. A release build must never load a prefab/scene that still references them — that yields shipped "missing script" / serialization-layout errors that never appear in the editor.
 
-## Why a serialized reference breaks the release build
-
-When a release build loads a scene/prefab that references a stripped-out type, Unity cannot resolve the script and logs:
-
-```
-The referenced script (Your.Namespace.DevOverlay) on this Behaviour is missing!
-A scripted object (probably Your.Namespace.DevOverlay?) has a different serialization
-layout when loading. (Read 32 bytes but expected 48 bytes)
-```
-
-These are shipped-to-players errors that never appear in the editor (where the type compiles), so they slip through until someone opens the release console.
-
-That is the constraint. There are two ways to satisfy it — pick by whether the tool has UI.
+Two ways to satisfy the constraint — pick by whether the tool has UI.
 
 ## A. Prefab-authored, stripped at build time (preferred for UI-bearing tools)
 
-Author the tool on a prefab like any other content, and delete it from the scene during non-development builds with `IProcessSceneWithReport`. This runs on the build's temporary copy of the scene, so committed scenes keep their instance and only the shipped player loses it.
+Author the tool on a prefab and delete it from the scene during non-development builds with `IProcessSceneWithReport` (runs on the build's temp scene copy; committed scenes keep their instance).
 
-Put a **marker component on the prefab root** and strip on that. The marker is the whole mechanism — an empty `MonoBehaviour` under the same compile guard as the tools it marks:
+Strip on a **marker component on the prefab root** — an empty `MonoBehaviour` under the same compile guard as the tools it marks:
 
 ```csharp
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -61,17 +49,15 @@ public sealed class DevToolsSceneStripper : IProcessSceneWithReport
 }
 ```
 
-- The `report == null` early-out is load-bearing: Unity also invokes scene processors when entering play mode, and stripping there would delete the tools you just dropped in.
-- **Match on a component type, never on GameObject name** — a renamed instance must still be caught.
-- **Prefer one marker over a list of every dev type.** Listing types works right up until someone adds a dev system and forgets the stripper — and that failure is invisible in the editor, surfacing only as missing scripts in a shipped player's console. A marker makes "on the dev prefab" and "stripped" the same fact.
-- **Every component sharing a dev prefab needs the same `#if` guard**, marker included. A component guarded by only `UNITY_EDITOR` sitting on a prefab next to `UNITY_EDITOR || DEVELOPMENT_BUILD` siblings becomes a missing script in *development* player builds. Widen the narrow one and let it no-op outside the editor.
-- Adding a dev system to an existing dev prefab then needs no stripper edit at all — just put it under the marked root.
+- `report == null` early-out is load-bearing — Unity also runs scene processors on play entry.
+- **Match on a component type, never on GameObject name.**
+- **One marker over a list of every dev type** — forgetting to update a type list is invisible in the editor and ships as missing scripts.
+- **Same `#if` guard on every component sharing the prefab**, marker included. A narrower `UNITY_EDITOR`-only sibling becomes a missing script in *development* players.
+- Adding a tool to an existing marked prefab needs no stripper edit.
 
-This is what makes the tool draggable: it can be committed into a scene without ever reaching a player, and its UI is authored in the Inspector like everything else (see the `no-code-built-ui` rule) instead of being built in C#.
+## B. Self-spawn under the guard (small, no-UI, always-on helpers)
 
-## B. Self-spawn under the guard (for small, no-UI, always-on helpers)
-
-When the tool has no authorable content — a frame-rate clamp, a log forwarder, a static-state hook — a prefab buys nothing. Guard the whole file and let it create itself.
+When there is no authorable content, a prefab buys nothing. Guard the file and create itself:
 
 ```csharp
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -79,9 +65,8 @@ using UnityEngine;
 
 public sealed class DevLogForwarder : MonoBehaviour
 {
-    // Self-spawns instead of being placed on a prefab/scene: this type is compiled out of
-    // release builds, so a serialized reference to it would become a "missing script" +
-    // serialization-layout error in the player. Idempotent — bails if one already exists.
+    // Self-spawns: type is compiled out of release, so a serialized ref would become a
+    // missing script in the player. Idempotent — bails if one already exists.
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureInstance()
     {
@@ -96,32 +81,28 @@ public sealed class DevLogForwarder : MonoBehaviour
 #endif
 ```
 
-- Make the bootstrap **idempotent** — `AfterSceneLoad` fires on every scene load.
-- Provide code defaults; a self-spawned instance has no inspector data.
-- Wire providers/config behind the `#if`, not via inspector fields on a shipped asset.
-
-## Choosing
+- Bootstrap must be **idempotent** (`AfterSceneLoad` fires every scene load).
+- Code defaults only; no inspector data on a self-spawned instance.
+- Once a tool grows UI or becomes optional per scene, migrate to A — self-spawn forces it into every scene and can only build UI in code.
 
 | Situation | Pattern |
 |---|---|
-| Tool has UI, or should be optional per scene, or wants Inspector tuning | **A** — prefab + stripper |
-| Tool is a few lines, no UI, and should always be on in dev | **B** — self-spawn |
-| Several dev tools in one project | **A** — one shared dev prefab, one stripper |
-
-Self-spawn is the cheaper answer for one small helper. Once a tool grows UI, or you find yourself wanting it in some scenes but not others, it has outgrown B — the self-spawn hook forces it into every scene and its UI can only be built in code.
+| UI, optional per scene, or Inspector tuning | **A** — prefab + stripper |
+| Few lines, no UI, always on in dev | **B** — self-spawn |
+| Several tools in one project | **A** — one shared prefab, one stripper |
 
 ## Do not
 
-- Ship a dev-guarded `MonoBehaviour` on a prefab/scene **without** a build-time stripper covering it.
-- Let a dev prefab mix compile guards (see A) — the narrowest guard decides where it breaks.
-- Strip by name, or strip unconditionally without checking `BuildOptions.Development`.
-- Rely on `[SerializeField]` data for a **self-spawned** component; it has none. (A prefab-authored one may use serialized fields freely.)
-- Leave an orphan prefab whose only purpose was to carry a now-self-spawning dev component — delete it.
+- Ship a guarded `MonoBehaviour` on a prefab/scene without a covering stripper.
+- Mix compile guards on one dev prefab — the narrowest guard decides where it breaks.
+- Strip by name, or strip without checking `BuildOptions.Development`.
+- Rely on `[SerializeField]` for a **self-spawned** component.
+- Leave an orphan prefab that only hosted a now-self-spawning component.
 
 ## Agent checklist
 
 - [ ] No `#if UNITY_EDITOR || DEVELOPMENT_BUILD` MonoBehaviour reachable from a shipped prefab/scene without a stripper
-- [ ] Prefab-hosted dev tools: all components share the same guard, and the root carries the stripper's marker
-- [ ] Stripper checks `report == null` (play mode) and `BuildOptions.Development`, and matches by type
-- [ ] Self-spawned dev systems are guarded, idempotent, and work from code defaults
-- [ ] Prefabs/scenes that existed only to host a now-self-spawning dev component are removed
+- [ ] Prefab-hosted tools: same guard on all components; root carries the stripper marker
+- [ ] Stripper checks `report == null` and `BuildOptions.Development`; matches by type
+- [ ] Self-spawned systems are guarded, idempotent, and work from code defaults
+- [ ] Orphan prefabs for now-self-spawning components are removed

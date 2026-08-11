@@ -1,33 +1,45 @@
 ---
-description: Runtime singletons inherit SingletonBehaviour<T>; Instance throws, no null guards
+description: Runtime singletons inherit SharedSingletonBehaviour or the game SingletonBehaviour; Instance throws, no null guards
 globs: **/*.cs
 alwaysApply: false
 ---
 
 # Singleton Behaviour
 
-Runtime MonoBehaviour singletons **must** inherit the shared `SingletonBehaviour<T>` base (in the project's Core assembly). Do not hand-roll `static Instance { get; private set; }` + duplicate `Awake` guards.
+Do not hand-roll `static Instance { get; private set; }` + duplicate `Awake` guards. Use the shared base that matches the assembly:
+
+| Code lives in | Inherit | Assembly |
+|---------------|---------|----------|
+| Shared feature assemblies | `SharedSingletonBehaviour<T>` | `MonkeyTilt.Shared.Core` (namespace `MonkeyTilt.Shared`) |
+| The game’s own assemblies | That game’s `SingletonBehaviour<T>` | The game’s Core assembly |
+
+Same contract either way: throwing `Instance`, `HasInstance`, `TryGetInstance`, and a `ResetStatics` hook for the play-mode reset hub. Neither base calls `DontDestroyOnLoad` — lifetime is whatever placed the object (scene/prefab).
 
 ## Creating a new singleton
 
 ```csharp
-public class MyManager : SingletonBehaviour<MyManager>
+// Shared feature
+public class NetTraceWindow : SharedSingletonBehaviour<NetTraceWindow>
 {
-    public static new void ResetStatics() => SingletonBehaviour<MyManager>.ResetStatics();
+    public static new void ResetStatics() => SharedSingletonBehaviour<NetTraceWindow>.ResetStatics();
 
-    protected override void OnSingletonAwake()
-    {
-        // Init after this object becomes the active instance.
-        // DontDestroyOnLoad is handled by the base class.
-    }
+    protected override void OnSingletonAwake() { }
+}
+
+// Game assembly (parallel type, same shape)
+public class SFXManager : SingletonBehaviour<SFXManager>
+{
+    public static new void ResetStatics() => SingletonBehaviour<SFXManager>.ResetStatics();
+
+    protected override void OnSingletonAwake() { }
 }
 ```
 
-Then register `MyManager.ResetStatics()` in the project's `PlayModeStaticReset` (see domain-reload-statics rule). Clear any static events in that override.
+Register `T.ResetStatics()` in the project’s `PlayModeStaticReset` (see domain-reload-statics rule). Clear any static events in that override.
 
 ## Access rules — fail fast, never silently skip
 
-`Instance` **throws** when no instance exists. That is intentional: missing singletons are bugs, not optional dependencies.
+`Instance` **throws** when no instance exists. Missing singletons are bugs, not optional dependencies.
 
 ```csharp
 // ❌ BAD — silently skips work when singleton is missing
@@ -69,7 +81,7 @@ if (GameFlow.TryGetInstance(out var flow))
 
 ## Agent checklist
 
-- [ ] New singleton derives from `SingletonBehaviour<T>`, not raw MonoBehaviour
+- [ ] Shared code uses `SharedSingletonBehaviour<T>`; game code uses the game’s `SingletonBehaviour<T>`
 - [ ] `ResetStatics()` registered in `PlayModeStaticReset`
 - [ ] No `?.`, `??`, or `Instance != null` guards on singleton access in feature code
 - [ ] Lazy creation uses `HasInstance`; teardown uses `TryGetInstance`

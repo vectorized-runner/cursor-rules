@@ -6,7 +6,10 @@ alwaysApply: false
 
 # Game Asset Database
 
-Load project assets by **string address** through the shared `ResourceManager` + `GameAssetDatabase` infrastructure. Do **not** use `Resources.Load`, `Resources.LoadAll`, or `Resources.LoadAsync` in feature or editor code.
+Load project assets by **string address** through the shared `ResourceManager` +
+`GameAssetDatabase` infrastructure (`MonkeyTilt.Shared.AssetCatalog`,
+namespace `MonkeyTilt.Shared`). Do **not** use `Resources.Load`,
+`Resources.LoadAll`, or `Resources.LoadAsync` in feature or editor code.
 
 ## Architecture
 

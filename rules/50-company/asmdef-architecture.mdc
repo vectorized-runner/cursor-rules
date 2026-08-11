@@ -18,7 +18,7 @@ Company projects split runtime code into three assemblies with one-way reference
 
 ## What goes where
 
-- **Core** — `ResourceManager`, `GameAssetDatabase`, `SingletonBehaviour<T>`, generic infrastructure. No gameplay state, no presentation, no networking.
+- **Core** — game-local infrastructure (e.g. that game’s `SingletonBehaviour<T>`). Shared catalog/loading lives in `MonkeyTilt.Shared.AssetCatalog`; the Shared singleton base is `SharedSingletonBehaviour<T>` in `MonkeyTilt.Shared.Core`. No gameplay state, no presentation, no networking.
 - **Gameplay** — client game state, server sync, session flow, player actions, the game-state singleton exposing state + events + commands. No `Canvas`, TMP, view classes, overlays, or scene presentation code. No spawning presentation objects — presentation bootstraps itself.
 - **Presentation** — 3D scene views, overlays, HUD, input raycasts, animations, audio playback. Subscribes to gameplay events; calls gameplay methods for actions.
 
