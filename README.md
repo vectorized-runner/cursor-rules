@@ -25,7 +25,7 @@ Rules are organized general → specific. A more specific layer may **tighten** 
 | `rules/30-unity/` | Engine | Domain reload statics, Unity.Mathematics, Unity.Collections, component access, update-loop hygiene |
 | `rules/40-webgl/` | Platform | No threads, forbidden APIs, build size, GC/memory constraints |
 | `rules/50-company/` | Infrastructure | SharedSingletonBehaviour / game SingletonBehaviour, ResourceManager/GameAssetDatabase, asmdef architecture, pure DTO contracts, modal input blocking, UI safe area |
-| `skills/` | Procedures | On-demand workflows: GC allocation audit, WebGL build-size audit |
+| `skills/` | Procedures | On-demand workflows: GC allocation audit, WebGL build-size audit, verification depth (`/no-verify`, `/full-verify`) |
 
 ## Contributing a rule
 

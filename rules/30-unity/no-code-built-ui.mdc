@@ -31,6 +31,8 @@ Any temporary editor script (migration, batch fix, initial generation) is delete
 
 A UI change is not done until visually verified: open the project's UI harness/review scene (or the target scene), feed representative data (including stress cases: long names, large values, full lists), take a screenshot, and **read the image** — check positions, overlap, truncation against the design reference. For wired behavior, enter play mode briefly and check the console; views must fail loudly on missing serialized refs, so wiring breaks are visible there. Attach the screenshot to your summary.
 
+**The user may take this one over.** The above is the default, and the agent never opts out of it on its own. But verification depth is the user's to set: the `no-verify` skill (`/no-verify`) defers the check to them for that request and requires a written hand-off — what changed, what to look at, what is unconfirmed — in the screenshot's place; `/full-verify` forces the whole loop. The check still happens either way; a human does it. Rules 1–4 never relax.
+
 ## Rebuild menu items — derived output only
 
 A `Rebuild ...` editor menu item is legitimate **only when its output is derived data nobody hand-edits**: font atlases, asset catalogs/groups, baked textures, generated import settings, dev-only harness scenes. For those, "change the script, rerun the item" is the correct workflow.
