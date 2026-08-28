@@ -1,5 +1,5 @@
 ---
-description: Load assets by address via ResourceManager/GameAssetDatabase — no Resources.Load
+description: Load assets by address via ResourceManager/AssetGroup — no Resources.Load
 globs: **/*.cs
 alwaysApply: false
 ---
@@ -7,7 +7,7 @@ alwaysApply: false
 # Game Asset Database
 
 Load project assets by **string address** through the shared `ResourceManager` +
-`GameAssetDatabase` infrastructure (`MonkeyTilt.Shared.AssetCatalog`,
+`AssetGroup` infrastructure (`MonkeyTilt.Shared.AssetCatalog`,
 namespace `MonkeyTilt.Shared`). Do **not** use `Resources.Load`,
 `Resources.LoadAll`, or `Resources.LoadAsync` in feature or editor code.
 
@@ -17,8 +17,27 @@ namespace `MonkeyTilt.Shared`). Do **not** use `Resources.Load`,
 |-------|------|
 | `AssetEntry` | Serializable pair: `address` + `UnityEngine.Object` |
 | `AssetGroup` | ScriptableObject holding entries for one category (Configs, SFX, Textures, …) |
-| `GameAssetDatabase` | Root catalog referencing all groups |
-| `ResourceManager` | Flattens groups into an address dictionary; runtime load API |
+| `ResourceManager` | Flattens every group into an address dictionary; runtime load API |
+
+**There is no root catalog asset.** A group registers itself by living in a
+`Resources/AssetGroups/` folder — `ResourceManager` does one
+`Resources.LoadAll<AssetGroup>("AssetGroups")` at `BeforeSceneLoad`. So
+duplicating a group is the whole workflow: copy it, rename the addresses, done.
+Groups merge across *every* `Resources/AssetGroups/` folder in the project, which
+is how a shared package ships its own group into each consuming game.
+
+Two consequences worth knowing:
+
+- A group **outside** that folder is invisible at runtime. `AssetGroupPlacementGuard`
+  logs an error at import when that happens — don't ignore it.
+- Two groups claiming the same address is an **error**, not a warning: scan order
+  decides the winner. Renaming a duplicated group's addresses is what clears it.
+
+## Browsing the catalog
+
+**MonkeyTilt → Asset Catalog** opens a project-wide window: search every registered
+address by address or asset name, or list the groups. Use it before inventing a new
+address — the one you want may already exist.
 
 ## Address format — no forward slashes
 
@@ -77,6 +96,8 @@ Runtime-generated resources (procedural textures, cloned materials) may be cache
 ## Registering a new asset
 
 1. Add an entry (address + reference) to the appropriate `AssetGroup` asset, chosen by category.
+   Need a new category? Duplicate an existing group in place, or use **Create Asset Group** in the
+   Asset Catalog window — either way it must land under `Resources/AssetGroups/`.
 2. Pick a flat `_`-separated address — **no `/`**.
 3. Use the same address string at the call site (prefer a shared constant or `*Addresses` helper).
 4. Keep addresses stable — they are the public API.
@@ -97,6 +118,8 @@ The **only** permitted `Resources.Load` is inside `ResourceManager` itself, load
 
 - [ ] No new `Resources.Load` / `LoadAll` / `LoadAsync` calls
 - [ ] New assets registered in the correct `AssetGroup` with a stable, **slash-free** address
+- [ ] New/duplicated `AssetGroup` assets live under a `Resources/AssetGroups/` folder
+- [ ] Duplicated groups had their addresses renamed — no collision errors on play
 - [ ] Address uses `_` separators; `LoadAll` families share a common prefix
 - [ ] Expected assets use throwing `Load<T>`; optional paths use `Contains` first
 - [ ] No new caches of assets loaded via `ResourceManager`
