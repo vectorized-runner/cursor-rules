@@ -1,12 +1,12 @@
 ---
-description: Wire contract DTOs stay pure data — no display logic, no UI references
-globs: **/*.cs
+description: Wire contract DTOs live under a Contracts/ folder and stay pure data — no display logic, no UI references, no client-convenience fields
+globs: **/Contracts/**/*.cs
 alwaysApply: false
 ---
 
 # Pure DTO Contracts
 
-Types under the project's `Gameplay/Contracts/` folder are the **wire contract** — the serialized shape exchanged with the backend. They must stay **pure data**. Do not add client-side, presentation, or app-specific logic to them.
+**Wire DTOs live under a folder named `Contracts/`** (any depth, any assembly), and nothing else goes in that folder. That folder is the **wire contract** — the serialized shape exchanged with the backend. Its types must stay **pure data**. Do not add client-side, presentation, or app-specific logic to them.
 
 ## Allowed in contracts
 
@@ -16,7 +16,7 @@ Types under the project's `Gameplay/Contracts/` folder are the **wire contract**
 
 ## Not allowed in contracts
 
-Put these on a **client system** (helper method, extension, or static utility in Core/Gameplay/Presentation) instead:
+Put these on a **client system** (a private helper on the consumer, or a static helper next to it) instead:
 
 - Display/formatting logic — labels, hierarchy names, UI strings (`DisplayName`, `ToLabel()`)
 - Derived presentation values — colors, sprites, icons, sort keys for UI
@@ -29,7 +29,7 @@ Put these on a **client system** (helper method, extension, or static utility in
 public string DisplayName => Value switch { CardValue.Wild => "Wild", _ => $"{Color}_{Value}" };
 
 // ✅ GOOD — private helper on the caller
-// Presentation/CardUI/CardFactory.cs
+// CardFactory.cs (the consumer, outside Contracts/)
 private static string FormatCardName(Card card) => card.Value switch
 {
     CardValue.Wild => "Wild",
@@ -50,8 +50,8 @@ When adding or changing wire types, match the backend spec exactly (field names,
 - Never add a serialized DTO field solely because client gameplay or presentation needs a convenient flag/value.
 - A wire field belongs only on the exact DTO whose backend payload object defines it. Do not copy an envelope, parent, sibling, or differently shaped action field onto another DTO.
 - Do not enrich a DTO in a mapper with fields that are absent from that DTO's canonical backend schema, even when the source value exists elsewhere in the same publication.
-- Before changing a DTO, verify its exact owner and shape in `Docs/backend/`. The presence of a field somewhere in a publication does not authorize adding it to every nested/action-specific DTO.
-- Derive client state outside `Gameplay/Contracts/`, using the authoritative gameplay state or the payload object that already owns the value.
+- Before changing a DTO, verify its exact owner and shape in the project's backend spec (see its `AGENTS.md`). The presence of a field somewhere in a publication does not authorize adding it to every nested/action-specific DTO.
+- Derive client state outside the `Contracts/` folder, using the authoritative gameplay state or the payload object that already owns the value.
 
 ```csharp
 // ❌ BAD — game_over belongs to the enclosing action payload; this copy exists only for presentation
@@ -64,9 +64,10 @@ bool isWinningPlay = playerCardCounts.TryGetValue(data.PlayerId, out int count) 
 
 ## Agent checklist
 
+- [ ] Wire types live under a `Contracts/` folder; non-wire types do not
 - [ ] No display/formatting/UI logic added to contract types
 - [ ] Derived label/visual helpers live on a client system, not the DTO
 - [ ] Contract types reference no presentation namespaces or Unity UI types
 - [ ] New computed members reflect wire/game data, not client presentation choices
-- [ ] Every new serialized field is defined on this exact payload object in `Docs/backend/`
+- [ ] Every new serialized field is defined on this exact payload object in the backend spec
 - [ ] No DTO field was copied/enriched from an envelope or another payload for client convenience

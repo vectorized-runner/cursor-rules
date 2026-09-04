@@ -1,6 +1,5 @@
 ---
-description: Object pooling — no Instantiate/Destroy churn in gameplay loops
-globs: **/*.cs
+description: Object pooling — no Instantiate/Destroy churn in gameplay loops. Use when spawning prefabs repeatedly during play (VFX, projectiles, list rows, audio one-shots).
 alwaysApply: false
 ---
 

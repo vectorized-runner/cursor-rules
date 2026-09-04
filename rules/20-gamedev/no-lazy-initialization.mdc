@@ -12,7 +12,7 @@ Lazy getters cost a branch plus (for Unity objects) an engine-call `==` on **eve
 
 ```csharp
 // ❌ BAD — pays a Unity null-check per access; fails at first use, mid-game
-public static HudConfig Hud
+private HudConfig Hud
 {
     get
     {
@@ -24,26 +24,27 @@ public static HudConfig Hud
     }
 }
 
-// ✅ GOOD — loaded once before the first scene Awake; accessor is branch-free;
-// a missing asset throws at startup (fail fast), not mid-game
-public static HudConfig Hud { get; private set; }
+// ✅ GOOD — resolved once in Awake on the type that owns it; a missing asset
+// throws at startup (fail fast), not mid-game; every later access is a plain field read
+private HudConfig _hud;
 
-[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-static void Initialize()
+private void Awake()
 {
-    Hud = ResourceManager.Load<HudConfig>(HudConfig.Address);
+    _hud = ResourceManager.Load<HudConfig>(HudConfig.Address);
 }
 ```
+
+Do **not** turn a catalog asset into a `static` cache — `ResourceManager` already holds it for the session (see the game-asset-database rule). Statics are for state that is computed, not loaded.
 
 ## Where to initialize
 
 | State | Init point |
 |---|---|
-| Static config/service caches | `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` |
-| Instance fields on a MonoBehaviour | `Awake` / `OnSingletonAwake` |
+| Catalog assets / configs | Instance field in `Awake` / `OnSingletonAwake`, or a `[SerializeField]` reference |
+| Computed static tables, pools | `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]`, wired into the static-reset hub |
 | Scene references | Serialized fields, validated in `Awake` |
 
-Pair every eager static with the project's static-reset hub (see domain-reload rule) — `RuntimeInitializeOnLoadMethod` re-runs on each play entry, so re-initialization is automatic.
+`RuntimeInitializeOnLoadMethod` re-runs on each play entry, so eager statics re-initialize automatically — but they still need a reset entry (see the domain-reload rule).
 
 ## Allowed exceptions (narrow)
 
@@ -55,6 +56,7 @@ If the object is used every session, "maybe we won't need it" is not an argument
 ## Agent checklist
 
 - [ ] No new `if (_x == null) _x = Load(...)` getters for always-needed state
-- [ ] Statics resolved in a `BeforeSceneLoad` initializer; instance fields in `Awake`
+- [ ] Configs/assets resolved into instance fields in `Awake`; computed statics in a `BeforeSceneLoad` initializer
+- [ ] No new `static` cache of an asset already held by `ResourceManager`
 - [ ] Missing required assets throw/log at startup, not on first use
 - [ ] Eager statics wired into the static-reset hub

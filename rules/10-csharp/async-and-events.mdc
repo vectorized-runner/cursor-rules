@@ -1,10 +1,20 @@
 ---
-description: Async and event hygiene — no async void, symmetric unsubscribe, no Task.Run or Task.Delay
+description: Async and event hygiene — coroutine vs async choice, no async void, symmetric unsubscribe, no Task.Run or Task.Delay
 globs: **/*.cs
 alwaysApply: false
 ---
 
 # Async and Event Hygiene
+
+## Coroutine or `async`? Pick by what the work is
+
+| Work | Use |
+|------|-----|
+| Frame-timed visuals, sequencing tied to a MonoBehaviour's lifetime (tweens, reveal sequences, timed VFX) | **Coroutine** — dies with the object, no lifetime guard needed, cached yields allocate nothing |
+| I/O and anything that returns a value (network, asset load, server round-trip) | **`async` / `Awaitable`** with `destroyCancellationToken` |
+| Waiting a fixed time inside either | Coroutine: cached `WaitForSeconds`; async: `Awaitable.WaitForSecondsAsync` / `MainThreadDelay` |
+
+Do not mix the two inside one flow (a coroutine that starts a task and polls `IsCompleted`, or a task that starts a coroutine and awaits a flag). If a sequence needs a server result in the middle, the whole sequence is `async`.
 
 ## No `Task.Run` — ever
 
@@ -73,6 +83,7 @@ private void OnDisable()
 
 ## Agent checklist
 
+- [ ] Coroutine for frame-timed visuals, `async` for I/O and value-returning work; not mixed in one flow
 - [ ] No `Task.Run`, `Task.Delay`, or thread-pool APIs
 - [ ] No `async void` except top-level Unity/UI callback adapters with try/catch
 - [ ] Every `await` in a MonoBehaviour followed by lifetime guard or cancellation token

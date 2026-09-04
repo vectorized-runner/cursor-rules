@@ -1,0 +1,36 @@
+---
+description: Legacy and imported code — do the brief, fix rule violations only inside code you already edit, never suppress a guard to make old code pass
+alwaysApply: true
+---
+
+# Legacy Code Policy
+
+Every project carries code written before these rules (imported shells, third-party packages, early prototypes). The rules describe **new and edited** code. They are not a mandate to rewrite what already ships.
+
+## Rules
+
+1. **Do the brief.** Do not refactor, rename, reformat, or "bring up to standard" code the brief does not touch — even when it plainly violates a rule. Untouched legacy is out of scope by default.
+2. **Fix inside what you edit.** When the brief has you change a method, that method now counts as edited code and must satisfy the rules — fix the violation there. Do not extend the fix to sibling methods or the rest of the file; do not leave the violation in place because "it was already like that".
+3. **Never suppress a guard to make legacy pass.** No new entries in a grandfather list, no `// *-guard: allow` markers, no `#pragma`, no widened exemption in the guard script, unless the brief asks for exactly that. If a guard fails on pre-existing code you did not change, report it under **Unverified** and stop — the user decides.
+4. **Report what you saw.** Violations you noticed but did not fix go in the final summary as a short list (file, rule), so the team can schedule them. Noticing is free; fixing is a separate brief.
+5. **Shell edits are logged.** When a project distinguishes imported shell code from game code (see its `AGENTS.md`), every shell edit gets its documented log line in the same change.
+
+```csharp
+// Brief: "make the payout label show two decimals"
+
+// ❌ BAD — refactors the whole class, touches 8 unrelated methods
+// ❌ BAD — leaves float money in the method you edited because it was already float
+
+// ✅ GOOD — the edited method is now rule-compliant; the rest of the file is untouched
+private void ShowPayout(decimal payout)
+{
+    _payoutText.text = payout.ToString("F2", CultureInfo.InvariantCulture);
+}
+```
+
+## Agent checklist
+
+- [ ] No edits outside the brief's scope; legacy left as found
+- [ ] Every method actually edited satisfies the rules
+- [ ] No new grandfather entries, allow markers, or guard exemptions without an explicit brief
+- [ ] Violations noticed but not fixed listed in the summary

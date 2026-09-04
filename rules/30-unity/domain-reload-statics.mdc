@@ -29,7 +29,7 @@ public static class PlayModeStaticReset
 
 ## Rules
 
-1. **Every new static field, singleton `Instance`, static event, or static cache** gets an `internal static void ResetStatics()` (or `ClearCache()`) and a call in the reset hub. No exceptions.
+1. **Every new static field, singleton `Instance`, static event, or static cache** gets a `public static void ResetStatics()` (or `ClearCache()`) and a call in the reset hub. No exceptions.
 2. **Never rely on domain reload** to clear state. Assume the previous play session left stale references and subscribed handlers.
 3. **Static events** must be set to null in the reset method — stale handlers fire twice or reference destroyed objects.
 4. **`async void` / fire-and-forget tasks** started in play mode may complete after exit — cancel or guard on `this == null`.
@@ -43,7 +43,7 @@ public static event Action<int> ScoreChanged;
 // ✅ GOOD — cleared in the hub
 public static event Action<int> ScoreChanged;
 
-internal static void ResetStatics()
+public static void ResetStatics()
 {
     ScoreChanged = null;
     _instance = null;

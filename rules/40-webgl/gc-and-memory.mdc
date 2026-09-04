@@ -34,7 +34,7 @@ string json = JsonConvert.SerializeObject(fullHistory);
 
 ## Watch string churn
 
-Strings are the most common invisible allocator: UI text, log messages, JSON. Rebuild UI strings only on change; keep payload parsing to one pass; never build debug strings that aren't shipped (use `[Conditional]` — see serialization-and-logging rule).
+Strings are the most common invisible allocator: UI text, log messages, JSON. Rebuild UI strings only on change; keep payload parsing to one pass; never build debug strings that aren't shipped (use `[Conditional]` — see the logging-discipline rule).
 
 ## Agent checklist
 

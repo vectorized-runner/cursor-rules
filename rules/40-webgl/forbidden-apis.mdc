@@ -1,5 +1,5 @@
 ---
-description: WebGL forbidden APIs — sockets, HttpClient, sync file I/O, Process, native plugins
+description: WebGL forbidden APIs — sockets, HttpClient, sync file I/O, Process, native plugins, Input System package; browser runtime rules
 globs: **/*.cs
 alwaysApply: false
 ---
@@ -21,6 +21,27 @@ The browser sandbox removes whole API families. These compile fine and then fail
 | Microphone / Webcam APIs | Not supported by Unity WebGL | JS interop with browser MediaDevices if required |
 | `Screen.SetResolution` expectations | Canvas size is controlled by the page | Style the canvas via the web template |
 | `System.Globalization` heavy culture use | Cultures largely stripped; `double.Parse(s)` is culture-sensitive | Always parse/format wire numbers with `CultureInfo.InvariantCulture` |
+| `UnityEngine.InputSystem` (Input System package) | Not installed; costs build size for nothing our games need | Legacy `Input` (`activeInputHandler: 0`), see below |
+| `Application.targetFrameRate = N` | A fixed value fights browser vsync and stutters | `-1` on WebGL; let the browser drive |
+
+## Input: legacy Input Manager only
+
+The **Input System package is not installed and must not be added**. No `using UnityEngine.InputSystem;`, no `Unity.InputSystem` asmdef reference, no `Mouse.current` / `Keyboard.current` / `InputAction` / `PlayerInput`.
+
+```csharp
+// ✅ GOOD — legacy input
+if (Input.GetMouseButtonDown(0))
+{
+    var ray = _camera.ScreenPointToRay(Input.mousePosition);
+}
+```
+
+UI clicks go through `EventSystem` + `GraphicRaycaster` — no manual polling for standard buttons.
+
+## Browser runtime behavior
+
+- Audio is silent until the first user gesture **inside the page/iframe**; never expect sound in `Awake`/`Start`. The web template's tap-to-play gate owns this.
+- Unity auto-suspends the player loop when the tab is hidden. Anything time-critical (round timers, server sync) must tolerate resume-after-suspend; never trust an elapsed `Time.time` across a suspend for money-related logic.
 
 ## `PlayerPrefs` / persistent data caveats
 
@@ -38,3 +59,5 @@ The browser sandbox removes whole API families. These compile fine and then fail
 - [ ] No `System.IO` on user paths; persistence via `PlayerPrefs` with `Save()` and best-effort expectations
 - [ ] All HTTP via `UnityWebRequest`; CORS handled server-side
 - [ ] Wire parsing/formatting uses `CultureInfo.InvariantCulture`
+- [ ] No Input System package or `UnityEngine.InputSystem` usage — legacy `Input` only
+- [ ] `targetFrameRate` left at `-1`; timers tolerate tab suspend

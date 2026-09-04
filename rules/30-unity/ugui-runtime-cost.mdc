@@ -1,0 +1,59 @@
+---
+description: uGUI runtime cost — canvas rebuilds are the biggest UI perf sink; split canvases, disable raycastTarget, no per-frame layout groups, TMP SetText
+globs: **/*.cs
+alwaysApply: false
+---
+
+# uGUI Runtime Cost
+
+Any change to any Graphic under a Canvas dirties that **whole Canvas**; Unity re-batches every element in it. On WebGL and mobile, a HUD that animates one number every frame can cost more than the 3D scene. Authoring decisions on the prefab decide this — code only makes it worse.
+
+## Split canvases by update frequency
+
+- **Static chrome** (frames, backgrounds, labels that never change) on one Canvas.
+- **Per-round updates** (balance, bet, multiplier) on their own child Canvas.
+- **Per-frame animation** (count-ups, pulsing pills, progress bars) on their own Canvas, small, with as few siblings as possible.
+- A nested Canvas component is enough — no new root Canvas or Camera needed.
+
+## Disable `raycastTarget` on everything not clickable
+
+Every `Image`/`TextMeshProUGUI` with `raycastTarget` on is tested by the `GraphicRaycaster` on every pointer event. Backgrounds, icons, labels, decorative sprites: **off**. Only the actual `Button`/`Toggle`/input target keeps it on. Set on the prefab, not in code.
+
+## Layout groups and fitters are authoring-time
+
+`HorizontalLayoutGroup` / `VerticalLayoutGroup` / `GridLayoutGroup` / `ContentSizeFitter` recompute on every dirty. Fine for a list rebuilt on data change; **not** on anything that moves or resizes every frame (an animated rect under a layout group triggers a full relayout of its parent chain each frame). Author fixed anchors for animated elements; use layout groups only where content genuinely varies.
+
+## Text
+
+- `TextMeshProUGUI.SetText(format, value)` / `SetText(charArray)` over `.text = $"..."` in anything that updates often — no string allocation, no boxing.
+- Write text only when the value changes (see the frame-budget rule). Writing the same string still dirties the canvas.
+- Do not toggle `enableAutoSizing` on runtime-updated text — every update re-fits.
+
+```csharp
+// ❌ BAD — allocates, dirties the shared HUD canvas every frame
+private void Update()
+{
+    _laneText.text = $"Lane {_lane}";
+}
+
+// ✅ GOOD — only on change, no string alloc, text lives on its own small canvas
+private void OnLaneChanged(int lane)
+{
+    _laneText.SetText("Lane {0}", lane);
+}
+```
+
+Money values are formatted through the project's currency formatter (see the money-and-numbers rule); `SetText`'s float overloads are for counts and cosmetic numbers.
+
+## Visibility
+
+- Hide with `CanvasGroup.alpha = 0` + `blocksRaycasts = false` when the element will show again soon; `SetActive(false)` when it stays hidden — `SetActive` on a big subtree is a rebuild on both ends.
+- Never `SetActive` toggle per frame.
+
+## Agent checklist
+
+- [ ] Per-frame animated UI sits on its own Canvas, separate from static chrome
+- [ ] `raycastTarget` off on all non-interactive Graphics (prefab)
+- [ ] No layout group / fitter on a per-frame animated rect
+- [ ] Frequent text updates use `SetText`, only on change
+- [ ] No per-frame `SetActive` toggling

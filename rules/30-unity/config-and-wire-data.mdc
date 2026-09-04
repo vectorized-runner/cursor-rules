@@ -1,0 +1,54 @@
+---
+description: Local config is ScriptableObject assets read live, never runtime JSON; wire DTOs use explicit [JsonProperty] and are deserialized once per message
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Config and Wire Data
+
+Two kinds of data enter the game: **local config** (tuning values, tables, curves) and **wire data** (server payloads). They use different tools and must not be mixed up.
+
+## Local config: ScriptableObjects, not runtime JSON
+
+Game configuration lives in **ScriptableObject assets**, deserialized by Unity at load — not JSON or text files parsed at runtime.
+
+- SO fields are Inspector-editable, diff-able, and cost zero parse time.
+- Keep a reference to the SO and read fields live; do not copy SO fields into private primitives at init (Inspector edits during play would stop applying — see the no-config-access-wrappers rule).
+
+```csharp
+// ❌ BAD — parses a JSON at startup; not Inspector-editable
+var cfg = JsonUtility.FromJson<TuningConfig>(File.ReadAllText(path));
+
+// ✅ GOOD — SO asset, wired or loaded by address; fields read live
+[SerializeField] private TuningConfig _config;
+public float MoveSpeed => _config.moveSpeed;
+```
+
+## Wire data: explicit contracts, parsed once
+
+- Wire DTOs live under a `Contracts/` folder and stay pure data (see the contracts-pure-dto rule).
+- Declare explicit `[JsonProperty("field_name")]` on every serialized member; never rely on reflection-based name conventions (stripping hazard — see the no-reflection rule).
+- Deserialize once per message, then convert to typed models at the ingestion boundary (see the parse-at-the-boundary rule). Never re-parse the same payload in multiple handlers.
+- Parse and format numbers with `CultureInfo.InvariantCulture` (see the forbidden-apis rule).
+
+```csharp
+// ❌ BAD — two handlers each deserialize the same envelope
+void OnBalance(string json) { var m = JsonConvert.DeserializeObject<Envelope>(json); ... }
+void OnHistory(string json) { var m = JsonConvert.DeserializeObject<Envelope>(json); ... }
+
+// ✅ GOOD — one deserialize, typed dispatch
+void OnMessage(string json)
+{
+    var envelope = JsonConvert.DeserializeObject<Envelope>(json);
+    Dispatch(envelope);
+}
+```
+
+Runtime JSON parsing (`JsonUtility`, Newtonsoft) is reserved for wire data — never for local static config.
+
+## Agent checklist
+
+- [ ] Local config is a ScriptableObject asset, not runtime-parsed JSON/text
+- [ ] SO configs read live via reference, not copied to primitives
+- [ ] DTO members carry explicit `[JsonProperty]`
+- [ ] Each payload deserialized once, converted at the boundary, never re-parsed downstream

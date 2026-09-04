@@ -1,6 +1,5 @@
 ---
-description: Unity.Collections over managed allocation for bulk data — allocator and Dispose rules
-globs: **/*.cs
+description: Unity.Collections over managed allocation for bulk data — allocator and Dispose rules. Use when allocating large buffers, feeding mesh/physics/job APIs, or touching NativeArray/NativeList.
 alwaysApply: false
 ---
 

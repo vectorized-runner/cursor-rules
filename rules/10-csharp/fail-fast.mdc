@@ -67,7 +67,7 @@ public bool TryGetUnit(int id, out Unit unit) { ... }
 
 Pair the two: throwing `Get*` for must-exist paths, `Try*` for may-be-absent paths. No "log error then `return null`" half-measures — if it's an error, throw.
 
-Returning null is allowed only when null is a genuine contract value: parse/deserialize results, `FirstOrDefault`-style "no match is normal" lookups, documented "none" sentinels.
+Returning null is allowed only when null is a genuine contract value: parse/deserialize results, "no match is normal" lookups (prefer `Try*` even there), documented "none" sentinels.
 
 ## No defensive null checks on internal code
 

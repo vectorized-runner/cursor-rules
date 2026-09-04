@@ -1,0 +1,50 @@
+---
+description: The server decides every outcome, payout, and bet-related time; the client renders server state and never computes, predicts, or re-derives results
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Server-Authoritative Outcome
+
+Our games are real-money casino games. **The client is a renderer of server state.** It never decides whether a bet wins, what it pays, when a round ends, or what the next multiplier is. Anything the client computes about an outcome is at best redundant and at worst a payout dispute.
+
+## Hard rules
+
+- **No outcome logic on the client.** No RNG that affects the result, no "hit/miss" decision, no ladder math that produces the payout. The server sends the result; the client animates it.
+- **No re-derivation.** If the server sends `payout_amount`, display `payout_amount`. Do not recompute it from `bet * multiplier` "to be safe" — when the two disagree, the client is wrong and now shows a number the wallet will never pay.
+- **No prediction.** Do not pre-render a win state, pre-move the player to the next lane, or pre-increment the balance before the server confirms. Optimistic UI is allowed only for pure visual feedback that carries no amount (button press, "waiting" spinner).
+- **Server time for anything bet-related.** Round timers, cooldowns, bet windows come from server timestamps or server-driven messages. Never `DateTime.Now` / `DateTime.UtcNow` for money logic; local `Time.time` only for animation pacing.
+- **Client-side randomness is cosmetic only.** `UnityEngine.Random` is fine for particle jitter, idle animation variation, tile face rotation — never for anything the player could read as the game result.
+
+```csharp
+// ❌ BAD — client decides and shows what it thinks the payout is
+decimal payout = _bet * _ladder[_lane];
+_payoutText.text = payout.ToString("F2");
+_balance += payout;
+
+// ✅ GOOD — server state is the only source; client renders it
+private void OnRoundResolved(RoundResolved msg)
+{
+    _payoutText.text = FormatUsd(msg.PayoutAmountUsd);
+    _balanceView.Set(msg.Balance);
+}
+```
+
+## Verification and mock servers
+
+- Provably-fair verification (`seed`, `nonce`, hash checks) is a **display of the server's verify response**, not a client recomputation used to drive gameplay.
+- Outcome logic may exist on the client **only** inside a mock/local server used for offline development, and that code lives in a test or mock assembly (or behind a compile guard) that never ships. It is the server's stand-in, not game code.
+
+## Allowed on the client
+
+- Formatting server values for display (see the money-and-numbers rule)
+- Validating **input** before sending (bet within `min_bet`/`max_bet` from the server config) — a UX nicety; the server still validates
+- Deriving **presentation** state from authoritative state (which lane to animate to, which tile to reveal) — never the reverse
+
+## Agent checklist
+
+- [ ] No client code computes win/loss, payout, multiplier, or round end
+- [ ] Displayed amounts come straight from server fields, not recomputed
+- [ ] No optimistic balance/win state before server confirmation
+- [ ] No `DateTime.Now`/`UtcNow` in bet-related logic; server time used
+- [ ] Any outcome logic sits in a mock/test assembly that does not ship

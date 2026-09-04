@@ -1,6 +1,5 @@
 ---
-description: Dev-only types are compiled out of release builds — keep them off shipped assets via prefab + build-time strip, or self-spawn
-globs: **/*.cs
+description: Dev-only types are compiled out of release builds — keep them off shipped assets via prefab + build-time strip, or self-spawn. Use when adding or editing anything under UNITY_EDITOR || DEVELOPMENT_BUILD guards, dev overlays, or debug tools.
 alwaysApply: false
 ---
 

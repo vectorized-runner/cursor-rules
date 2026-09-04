@@ -1,6 +1,5 @@
 ---
-description: Use Unity.Mathematics over Mathf/Vector3 for computation-heavy code
-globs: **/*.cs
+description: Use Unity.Mathematics over Mathf/Vector3 for computation-heavy code. Use when writing or editing simulation, movement, interpolation, or any math chain longer than one call.
 alwaysApply: false
 ---
 

@@ -1,19 +1,44 @@
 ---
-description: UI is prefab-authored — no code-built chrome, no UI builder scripts, screenshot-verified
+description: UI is prefab-authored — layout lives on prefabs, runtime code drives content/state only, no UI builder scripts, screenshot-verified
 alwaysApply: true
 ---
 
 # No Code-Built UI — Prefab-Authored Pipeline
 
-The committed **prefab is the single source of truth** for every screen, modal, and overlay. Code that generates UI competes with the prefab and silently destroys hand-authored edits. These five rules are non-negotiable:
+The committed **prefab is the single source of truth** for every screen, modal, and overlay. Code that generates UI, or sets its layout at play time, competes with the prefab and silently destroys hand-authored edits. These five rules are non-negotiable, wherever UI code happens to live in a project.
 
 ## 1. Edit prefabs, not runtime code
 
-UI layout (positions, sizes, anchors, hierarchy) is authored on the `.prefab` in the Unity Editor or via Unity MCP. Runtime view scripts only update **content and state**: text, sprites, colors, `SetActive`, `interactable`. Never assign `anchoredPosition` / `sizeDelta` / `anchorMin` / etc. or `AddComponent<Image|Button|TMP|LayoutGroup>` in runtime presentation code.
+UI layout (positions, sizes, anchors, hierarchy) is authored on the `.prefab` in the Unity Editor or via Unity MCP. Runtime view scripts only update **content and state**. Designers tune prefabs in the Inspector; hardcoded layout in C# overrides those edits at play time.
 
-**Static text is authoring too.** A label that never changes at runtime ("Leave Game?", button captions, column headers) is set on the prefab, not via `.text = "..."` in `Awake` — code re-assigning it silently overrides prefab edits, exactly like hardcoded layout. Runtime `.text` assignment is for **data-driven** values (scores, names, timers). State-driven literal selection (e.g. `"YOU WIN!"` vs `"YOU LOSE"`) is legitimate — mark it with an allow comment.
+```csharp
+// ❌ BAD — play-mode layout overrides prefab edits
+rowRt.anchorMin = rowRt.anchorMax = new Vector2(0.5f, 0.5f);
+rowRt.anchoredPosition = new Vector2(RowCenterX, y);
+rowRt.sizeDelta = new Vector2(RowWidth, RowHeight);
 
-Detailed contract and allowed exceptions (tweens, data-proportional fills, safe area): see the `prefab-authored-ui-layout` rule. A genuinely justified line carries `// layout-guard: allow — reason` on the same or previous line.
+// ✅ GOOD — layout authored on prefab; code updates content
+[SerializeField] private TextMeshProUGUI _amountText;
+public void SetAmount(string text) => _amountText.text = text;
+```
+
+**Banned in runtime UI code**
+
+- `anchoredPosition`, `sizeDelta`, `anchorMin`/`anchorMax`, `offsetMin`/`offsetMax`, `pivot`, `localPosition`/`localScale` on UI chrome for baseline placement
+- Layout constants (`RowWidth`, `FirstRowY`, `NameFontSize`, …) used to position or size elements
+- `new GameObject(...)` + `AddComponent<Image|Button|TextMeshProUGUI|LayoutGroup>` to build screen chrome
+- **Static text.** A label that never changes at runtime ("Leave Game?", button captions, headers) is set on the prefab, not via `.text = "..."` in `Awake` — code re-assigning it overrides prefab edits exactly like hardcoded layout
+
+**Allowed at runtime**
+
+- **Content/state:** `.text` for **data-driven** values (scores, names, timers), `.color`, sprite/material swaps, `SetActive`, `interactable`, toggles. State-driven literal selection (`"YOU WIN!"` vs `"YOU LOSE"`) is content — mark it with the allow comment
+- **Data-proportional sizing:** fill width/height from a **serialized** authored max (stat bar fill = `_barWidth * ratio`) — track and max live on the prefab
+- **Animations:** temporary transforms during tweens; restore or let the animation end
+- **Safe area:** the one dedicated safe-area component (see the ui-safe-area rule) — not per-screen offsets
+- **Layout rebuild after content change:** `LayoutGroup` / `ContentSizeFitter` on the prefab; code may call `LayoutRebuilder.ForceRebuildLayoutImmediate` when dynamic text changes size
+- **Pooled/list rows:** instantiate a **row prefab** authored in Editor; bind data only — no per-row layout math
+
+A genuinely justified line carries `// layout-guard: allow — reason` on the same or previous line. `Editor/` scripts and one-off prefab migration tools may set `RectTransform` values — that is authoring, not a play-mode override.
 
 ## 2. Prefab edit recipe (Unity MCP)
 
@@ -31,24 +56,23 @@ Any temporary editor script (migration, batch fix, initial generation) is delete
 
 A UI change is not done until visually verified: open the project's UI harness/review scene (or the target scene), feed representative data (including stress cases: long names, large values, full lists), take a screenshot, and **read the image** — check positions, overlap, truncation against the design reference. For wired behavior, enter play mode briefly and check the console; views must fail loudly on missing serialized refs, so wiring breaks are visible there. Attach the screenshot to your summary.
 
-**The user may take this one over.** The above is the default, and the agent never opts out of it on its own. But verification depth is the user's to set: the `no-verify` skill (`/no-verify`) defers the check to them for that request and requires a written hand-off — what changed, what to look at, what is unconfirmed — in the screenshot's place; `/full-verify` forces the whole loop. The check still happens either way; a human does it. Rules 1–4 never relax.
+**Verification depth is the user's to set, not the agent's.** This is the default when a project says nothing. A project may set a different default in its own `.cursor/rules/` (for example compile-check only); per request, `/no-verify` defers the check to the user and requires a written hand-off — what changed, what to look at, what is unconfirmed — in the screenshot's place, and `/full-verify` forces the whole loop. The check still happens either way; a human does it. Rules 1–4 never relax.
 
 ## Rebuild menu items — derived output only
 
-A `Rebuild ...` editor menu item is legitimate **only when its output is derived data nobody hand-edits**: font atlases, asset catalogs/groups, baked textures, generated import settings, dev-only harness scenes. For those, "change the script, rerun the item" is the correct workflow.
-
-If the output is **authorable** (a prefab, scene content, or any asset someone might tune in the Inspector), the rebuilder is a second source of truth and every rerun destroys hand-authored edits — migrate the asset to prefab/Inspector authoring and **delete the rebuilder** (rule 4). Never extend an authored-output rebuilder to add a feature; edit the asset instead.
+A `Rebuild ...` editor menu item is legitimate **only when its output is derived data nobody hand-edits**: font atlases, asset catalogs/groups, baked textures, generated import settings, dev-only harness scenes. If the output is **authorable** (a prefab, scene content, any Inspector-tuned asset), the rebuilder is a second source of truth — migrate the asset to prefab/Inspector authoring and **delete the rebuilder** (rule 4). Never extend an authored-output rebuilder to add a feature; edit the asset instead.
 
 **Agents run menu items themselves** via Unity MCP (`execute_menu_item`) and verify the console output — never ask the user to run a menu item as a task step.
 
 ## Enforcement
 
-Projects enforce 1 and 3 mechanically with a UI-authoring guard (editor script that scans presentation code and script names, logs errors on recompile, and fails builds — same pattern as other build-guard scripts). Pre-existing code-built UI goes in the guard's explicit grandfather list, which only ever shrinks.
+Projects enforce 1 and 3 mechanically with a UI-authoring guard (editor script that scans runtime code for the banned members and script names, logs errors on recompile, and fails builds). Pre-existing code-built UI goes in the guard's explicit grandfather list, which only ever shrinks.
 
 ## Agent checklist
 
 - [ ] Layout/hierarchy changes made on the prefab (MCP or Editor), not in C#
-- [ ] Runtime views only touch content/state; justified exceptions carry an allow comment
+- [ ] Runtime views only touch content, visibility, and data-driven values; justified exceptions carry `// layout-guard: allow`
+- [ ] Dynamic lists use authored row prefabs, not code-built rows
 - [ ] No new `Build*Screen*` / `Build*Modal*` / `Build*Overlay*` / `*ScreenAssets*` scripts
 - [ ] One-off tools deleted in the same change as their committed output
-- [ ] Harness screenshot taken, read, and attached before claiming done
+- [ ] Verification done at the depth the project/user set; screenshot read and attached by default

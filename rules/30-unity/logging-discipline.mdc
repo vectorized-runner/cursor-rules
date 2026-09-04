@@ -1,0 +1,48 @@
+---
+description: Logging allocates and stalls — no per-frame logs, verbose logs compiled out with [Conditional], errors carry [Class] Method — reason context
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Logging Discipline
+
+Every `Debug.Log` allocates (message string, stack trace capture) and stalls — in WebGL it also marshals to the browser console. Logs are for **events**, never for **frames**.
+
+## No logging in per-frame code
+
+`Update`/`FixedUpdate`/`LateUpdate`, per-frame coroutine bodies, and per-message handlers that fire many times a second do not log. Not even "temporarily".
+
+## Verbose logs are compiled out, including their string
+
+```csharp
+// ❌ BAD — string is built and allocated even if the log is filtered out
+Debug.Log($"[Sim] tick {frame} units={units.Count}");
+
+// ✅ GOOD — call and argument evaluation removed entirely in release
+[System.Diagnostics.Conditional("ENABLE_VERBOSE_LOGS")]
+private static void LogVerbose(string message)
+{
+    Debug.Log(message);
+}
+
+LogVerbose($"[Sim] tick {frame} units={units.Count}");
+```
+
+`Conditional` removes the call **including argument evaluation** — the interpolated string is never built when the symbol is off. A runtime `if (_verbose)` check does not do that.
+
+## Errors and warnings stay, with context
+
+Genuine failure paths follow the fail-fast rule: `Debug.LogError` / `LogWarning` with `[ClassName] MethodName — reason (id=…, state=…)`. Never a bare `Debug.LogError("error")`, never `catch { }`.
+
+| Level | When |
+|-------|------|
+| **Error** | Required for this code path; skipping means wrong state, lost event, broken feature |
+| **Warning** | Unexpected but recoverable, or possibly optional |
+| **Log** | Rare lifecycle events (session start, reconnect, scene change) — never per frame |
+
+## Agent checklist
+
+- [ ] No `Debug.Log*` in `Update`/`FixedUpdate`/`LateUpdate`/coroutine loops/hot handlers
+- [ ] Verbose/diagnostic logs go through a `[Conditional]` method, not a runtime flag
+- [ ] Error/warning logs carry `[ClassName] Method — reason` and useful ids
+- [ ] No silent `catch { }`

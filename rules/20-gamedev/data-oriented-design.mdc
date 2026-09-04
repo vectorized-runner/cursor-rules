@@ -1,6 +1,5 @@
 ---
-description: Data-oriented design — arrays of structs, linear iteration, hot/cold split
-globs: **/*.cs
+description: Data-oriented design — arrays of structs, linear iteration, hot/cold split. Use when a system processes many instances per frame (units, projectiles, tiles, cards).
 alwaysApply: false
 ---
 

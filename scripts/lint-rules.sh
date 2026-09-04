@@ -56,15 +56,43 @@ for path in sorted(rules.rglob("*.mdc")):
             )
         prev = line
 
-# --- Shared.Core + SingletonBehaviour must say SharedSingletonBehaviour ---
+# --- Foundation + SingletonBehaviour must say SharedSingletonBehaviour ---
 for path in sorted(rules.rglob("*.mdc")):
     for i, line in enumerate(path.read_text().splitlines(), 1):
-        if "MonkeyTilt.Shared.Core" not in line:
+        if "MonkeyTilt.Foundation" not in line:
             continue
         if "SingletonBehaviour" in line and "SharedSingletonBehaviour" not in line:
             die(f"Shared singleton base must be SharedSingletonBehaviour: {path}:{i}:{line}")
 
+# --- Every MonkeyTilt.* assembly named in a rule must exist in BuildTools ---
+# Keep in sync with the asmdefs under Assets/BuildTools in the unity-buildtools repo.
+KNOWN_ASSEMBLIES = {
+    "MonkeyTilt.Foundation",
+    "MonkeyTilt.Shared.AssetCatalog",
+    "MonkeyTilt.Shared.AssetCatalog.Editor",
+    "MonkeyTilt.Shared.BuildPipeline.Editor",
+    "MonkeyTilt.Shared.DevOverlays",
+    "MonkeyTilt.Shared.DevOverlays.Editor",
+    "MonkeyTilt.Shared.EditorTools.Editor",
+    "MonkeyTilt.Shared.Guards.Editor",
+    "MonkeyTilt.Shared.NumericInput",
+    "MonkeyTilt.Shared.NumericInput.Editor",
+    "MonkeyTilt.Shared.Optimization.Editor",
+}
+assembly_token = re.compile(r"`(MonkeyTilt\.[A-Za-z0-9_.]+)`")
+for path in sorted(rules.rglob("*.mdc")):
+    for i, line in enumerate(path.read_text().splitlines(), 1):
+        for m in assembly_token.finditer(line):
+            name = m.group(1)
+            if name == "MonkeyTilt.Shared":
+                continue  # namespace, checked by the bare-assembly rule above
+            if name not in KNOWN_ASSEMBLIES:
+                die(f"unknown assembly `{name}` (not in KNOWN_ASSEMBLIES): {path}:{i}:{line}")
+
 # --- Frontmatter ---
+# A glob may key only on a Unity-mandated folder (Editor) or a folder convention the rule
+# itself states (Contracts). Never on an assumed project layout.
+ALLOWED_GLOBS = {"**/*.cs", "**/Editor/**/*.cs", "**/Contracts/**/*.cs", "**/*.md"}
 for path in sorted(rules.rglob("*.mdc")):
     text = path.read_text()
     rel = path.relative_to(root)
@@ -81,10 +109,20 @@ for path in sorted(rules.rglob("*.mdc")):
     always = re.search(r"^alwaysApply:\s*(true|false)\s*$", fm, re.M)
     if not always:
         die(f"missing/invalid alwaysApply frontmatter: {rel}")
-    elif always.group(1) == "false" and not re.search(r"^globs:\s+\S", fm, re.M):
-        die(f"alwaysApply: false requires a non-empty globs: {rel}")
     if re.search(r"^globs:\s*$", fm, re.M):
-        die(f"empty globs: key (omit the key when alwaysApply: true): {rel}")
+        die(f"empty globs: key (omit the key for alwaysApply or description-attached rules): {rel}")
+    globs_line = re.search(r"^globs:\s+(\S.*)$", fm, re.M)
+    if globs_line:
+        if always and always.group(1) == "true":
+            die(f"alwaysApply: true must not also have globs: {rel}")
+        for g in (g.strip() for g in globs_line.group(1).split(",")):
+            if g not in ALLOWED_GLOBS:
+                die(f"glob assumes project layout ({g}); allowed: {sorted(ALLOWED_GLOBS)}: {rel}")
+
+# --- Every rule ends with an Agent checklist ---
+for path in sorted(rules.rglob("*.mdc")):
+    if not re.search(r"^## Agent checklist\s*$", path.read_text(), re.M):
+        die(f"missing '## Agent checklist' section: {path.relative_to(root)}")
 
 # --- Length budget ---
 for path in sorted(rules.rglob("*.mdc")):

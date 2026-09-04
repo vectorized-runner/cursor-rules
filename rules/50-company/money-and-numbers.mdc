@@ -1,0 +1,59 @@
+---
+description: Money is decimal, parsed once from wire strings with InvariantCulture, never float/double; rounding only where the spec says; formatting only at the display edge
+globs: **/*.cs
+alwaysApply: false
+---
+
+# Money and Numbers
+
+Balances, bets, payouts, multipliers, and rates are money. Money is exact. `float` and `double` are not.
+
+## The type is `decimal`
+
+- Wire money fields arrive as **JSON strings** (`"1.00"`, `"0.1"`, `"100000"`) — see the project's backend spec. Parse them **once**, at the ingestion boundary, into `decimal` with `NumberStyles.Number` and `CultureInfo.InvariantCulture` (see the parse-at-the-boundary rule).
+- Every field, parameter, and property that carries an amount, multiplier, or rate is `decimal`. Never `float`, `double`, or a string that gets re-parsed downstream.
+- Integer counts (lanes, deaths, rounds) are `int`. Do not make them `decimal` "for consistency".
+
+```csharp
+// ❌ BAD — float money; 0.1 + 0.2 != 0.3, and Parse uses the machine culture
+float bet = float.Parse(dto.BetAmountUsd);
+float payout = bet * float.Parse(dto.PayoutMultiplier);
+
+// ✅ GOOD — decimal, parsed once at the boundary, invariant culture
+decimal bet = decimal.Parse(dto.BetAmountUsd, NumberStyles.Number, CultureInfo.InvariantCulture);
+```
+
+## Arithmetic
+
+- **Do not compute money the server already sent** (see the server-authoritative-outcome rule). Client arithmetic on money is limited to UX previews the server will re-validate (bet step up/down, "max bet" clamp).
+- **Round only where the spec says**, with the mode the spec says (`MidpointRounding.ToZero` for "truncate to 2dp", `AwayFromZero` for conventional rounding). Never `Math.Round(x)` with defaults on money.
+- Compare with `==` / `<` on `decimal` directly. No epsilon comparisons — that is a float habit.
+
+## Formatting is a display concern
+
+- Format at the display edge only, in the view that shows the value. Game state holds `decimal`, never a pre-formatted string.
+- Use `InvariantCulture` for anything sent back to the server; use the project's display formatter (currency symbol, grouping, dp) for anything the player sees. Never `ToString()` with no format on money.
+- Rebuild the display string only when the value changes (see the frame-budget rule).
+
+```csharp
+// ❌ BAD — culture-dependent, machine-dependent output ("1,00" on a German browser)
+_betText.text = bet.ToString("F2");
+SendBet(bet.ToString());
+
+// ✅ GOOD
+_betText.text = bet.ToString("F2", CultureInfo.InvariantCulture); // or the project's currency formatter
+SendBet(bet.ToString(CultureInfo.InvariantCulture));
+```
+
+## Allowed exceptions
+
+- Cosmetic animation of a number (count-up tween) may interpolate in `float` **for the tween only**; the final frame snaps to the `decimal` value formatted properly.
+- Bar fills / progress ratios derived from money for **layout** (fill = `(float)(current / max)`) — the cast happens at the last step, never stored.
+
+## Agent checklist
+
+- [ ] Amounts, multipliers, rates typed `decimal` everywhere after the boundary
+- [ ] Wire strings parsed once with `InvariantCulture`; no re-parse downstream
+- [ ] No `float`/`double` money; no epsilon comparisons on money
+- [ ] Rounding only where the spec says, with the spec's `MidpointRounding`
+- [ ] Formatting only in views; `InvariantCulture` on anything sent to the server

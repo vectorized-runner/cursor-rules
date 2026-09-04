@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Required Serialized Refs — use `this.Require`
 
-Awake-boundary validation of required `[SerializeField]` references (see the non-null-parameter-contract rule) has exactly one implementation: the `RequiredRefs.Require` extension in the shared core assembly (`MonkeyTilt.Shared.Core`, namespace `MonkeyTilt.Shared`).
+Awake-boundary validation of required `[SerializeField]` references (see the non-null-parameter-contract rule) has exactly one implementation: the `RequiredRefs.Require` extension in the shared foundation assembly (`MonkeyTilt.Foundation`, namespace `MonkeyTilt.Shared`).
 
 ```csharp
 private void Awake()

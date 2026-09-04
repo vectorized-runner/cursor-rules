@@ -1,5 +1,5 @@
 ---
-description: WebGL build size — legacy input only, no casual package deps, IL2CPP bloat awareness
+description: WebGL build size — no casual package deps, IL2CPP bloat awareness, asset hygiene
 globs: **/*.cs
 alwaysApply: false
 ---
@@ -8,28 +8,9 @@ alwaysApply: false
 
 WebGL builds are downloaded before every session. Every megabyte of wasm/data is load time and bounce rate. Code contributes through IL2CPP output; packages and assets through data.
 
-## Input: legacy Input Manager only
-
-The **Input System package is not installed and must not be added** — it costs build size and our games don't need it. Projects use Input Manager (Old): `activeInputHandler: 0`.
-
-- No `using UnityEngine.InputSystem;`, no `Unity.InputSystem` asmdef reference
-- No `Mouse.current`, `Keyboard.current`, `InputAction`, `PlayerInput`
-
-```csharp
-// ✅ GOOD — legacy input
-if (Input.GetMouseButtonDown(0))
-{
-    var ray = _camera.ScreenPointToRay(Input.mousePosition);
-}
-
-if (Input.GetKeyDown(KeyCode.Escape)) { ... }
-```
-
-UI clicks go through `EventSystem` + `GraphicRaycaster` — no manual polling for standard buttons.
-
 ## Package discipline
 
-- **No new package dependencies without a size justification.** Every package drags code (IL2CPP), often transitive deps, sometimes streaming assets. State the cost/benefit in the PR when adding one.
+- **No new package dependencies without a size justification.** Every package drags code (IL2CPP), often transitive deps, sometimes streaming assets. State the cost/benefit in the PR when adding one. The Input System package in particular is banned (see the forbidden-apis rule).
 - Remove packages that are no longer used; check `Packages/manifest.json` during cleanup passes.
 - Prefer writing 200 lines of project code over importing a 2 MB general-purpose library for one function.
 
@@ -47,7 +28,6 @@ UI clicks go through `EventSystem` + `GraphicRaycaster` — no manual polling fo
 
 ## Agent checklist
 
-- [ ] No Input System package or `UnityEngine.InputSystem` usage — legacy `Input` only
 - [ ] No new package deps without explicit size justification
 - [ ] No new deeply generic layers or reflection that defeats stripping
 - [ ] `link.xml` additions are last-resort and commented

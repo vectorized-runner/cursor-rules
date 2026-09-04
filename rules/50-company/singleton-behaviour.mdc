@@ -10,8 +10,8 @@ Do not hand-roll `static Instance { get; private set; }` + duplicate `Awake` gua
 
 | Code lives in | Inherit | Assembly |
 |---------------|---------|----------|
-| Shared feature assemblies | `SharedSingletonBehaviour<T>` | `MonkeyTilt.Shared.Core` (namespace `MonkeyTilt.Shared`) |
-| The game’s own assemblies | That game’s `SingletonBehaviour<T>` | The game’s Core assembly |
+| Shared feature assemblies | `SharedSingletonBehaviour<T>` | `MonkeyTilt.Foundation` (namespace `MonkeyTilt.Shared`) |
+| The game’s own assemblies | That game’s `SingletonBehaviour<T>` | The game’s runtime assembly (see its `AGENTS.md`) |
 
 Same contract either way: throwing `Instance`, `HasInstance`, `TryGetInstance`, and a `ResetStatics` hook for the play-mode reset hub. Neither base calls `DontDestroyOnLoad` — lifetime is whatever placed the object (scene/prefab).
 

@@ -1,26 +1,21 @@
 ---
-description: Core/Gameplay/Presentation asmdef split — reference directions and placement
-globs: **/*.cs
+description: Assembly architecture — one-way references from presentation to game state to infrastructure; folder and assembly names come from the project's AGENTS.md. Use when creating a new script, adding a reference between systems, or deciding where code belongs.
 alwaysApply: false
 ---
 
-# Assembly Architecture: Core / Gameplay / Presentation
+# Assembly Architecture
 
-Company projects split runtime code into three assemblies with one-way references, enforced by asmdefs:
+Runtime code has three roles with **one-way references**, enforced by asmdefs or, in a single-assembly project, by review:
 
-| Assembly | Folder | May reference |
-|----------|--------|---------------|
-| `<Game>.Core` | `Runtime/Core/` | Unity engine only — shared infrastructure |
-| `<Game>.Gameplay` | `Runtime/Gameplay/` | Core, contracts, networking — **not** presentation |
-| `<Game>.Presentation` | `Runtime/Presentation/` | Core, Gameplay, Unity UI/TMP |
+| Role | Contains | May reference |
+|------|----------|---------------|
+| **Infrastructure** | Singleton base, catalog loading, static-reset hub, shared helpers | Unity engine, `MonkeyTilt.Foundation`, `MonkeyTilt.Shared.AssetCatalog` |
+| **Game state** | Client game state, server sync, session flow, player commands, wire DTOs (`Contracts/`) | Infrastructure — **never** presentation |
+| **Presentation** | Scene views, HUD, overlays, input raycasts, animation, audio playback | Infrastructure and game state |
 
-**Direction:** Presentation → Gameplay → Core. Never the reverse — the compiler enforces it; don't fight the asmdef by moving files to the wrong layer.
+**Direction:** Presentation → Game state → Infrastructure. Never the reverse. Game state has no `Canvas`, TMP, view classes, or scene presentation code, and never spawns presentation objects — presentation bootstraps itself and subscribes.
 
-## What goes where
-
-- **Core** — game-local infrastructure (e.g. that game’s `SingletonBehaviour<T>`). Shared catalog/loading lives in `MonkeyTilt.Shared.AssetCatalog`; the Shared singleton base is `SharedSingletonBehaviour<T>` in `MonkeyTilt.Shared.Core`. No gameplay state, no presentation, no networking.
-- **Gameplay** — client game state, server sync, session flow, player actions, the game-state singleton exposing state + events + commands. No `Canvas`, TMP, view classes, overlays, or scene presentation code. No spawning presentation objects — presentation bootstraps itself.
-- **Presentation** — 3D scene views, overlays, HUD, input raycasts, animations, audio playback. Subscribes to gameplay events; calls gameplay methods for actions.
+The **folder and assembly names** that realise these roles are defined per project in its `AGENTS.md`. Do not assume `Core/`, `Gameplay/`, `Presentation/` or any other layout; read the project map first, and place a new script where that map says.
 
 ## Communication pattern
 
@@ -28,19 +23,27 @@ Company projects split runtime code into three assemblies with one-way reference
 // Presentation sends input
 GameState.Instance.PlayCard(cardId, color);
 
-// Gameplay notifies presentation (subscribe in Start/OnEnable, unsubscribe in OnDestroy/OnDisable)
-GameState.Instance.OnHandChanged.AddListener(RefreshHand);
+// Game state notifies presentation (subscribe in OnEnable, unsubscribe in OnDisable)
+GameState.Instance.HandChanged += RefreshHand;
 ```
 
-Gameplay exposes data and events; presentation reads them in handlers. No callbacks from gameplay into presentation types.
+Game state exposes data and events; presentation reads them in handlers. No callbacks from game state into presentation types, no presentation type names in game-state code.
 
-## Namespaces match folders
+```csharp
+// ❌ BAD — game state reaching into a view
+public void OnRoundEnded() { _resultBanner.Show(_payout); }
 
-Each project defines a namespace per assembly (e.g. `MT.<Game>.Runtime`, `MT.<Game>.Editor`). New scripts use the namespace matching their folder; no global-namespace scripts. `using` directives go outside the namespace block.
+// ✅ GOOD — game state raises an event; the banner subscribes
+public event Action<decimal> RoundEnded;
+```
+
+## Namespaces match assemblies
+
+Every script sits in the namespace its project assigns to that assembly and folder (see the project's `AGENTS.md`); no script is in the global namespace. `using` directives go outside the namespace block.
 
 ## Agent checklist
 
-- [ ] New gameplay script under `Runtime/Gameplay/`, presentation under `Runtime/Presentation/`, generic utility under `Runtime/Core/`
-- [ ] No presentation type references from Gameplay or Core
-- [ ] Presentation communicates via gameplay events + command methods only
-- [ ] Namespace matches the folder/assembly convention
+- [ ] Project `AGENTS.md` read; new script placed where its folder map says
+- [ ] No presentation type referenced from game-state or infrastructure code
+- [ ] Presentation communicates via game-state events and command methods only
+- [ ] Namespace matches the project's assembly/folder convention; nothing in the global namespace

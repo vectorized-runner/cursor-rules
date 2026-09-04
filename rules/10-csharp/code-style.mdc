@@ -1,10 +1,24 @@
 ---
-description: C# style — braces on all ifs, explicit private, fields first, no premature utils
+description: C# style — naming, braces on all ifs, explicit private, fields first, no premature utils
 globs: **/*.cs
 alwaysApply: false
 ---
 
 # C# Code Style
+
+## Naming
+
+| Kind | Style | Example |
+|------|-------|---------|
+| Private / protected fields (incl. `[SerializeField]`) | `_camelCase` | `_hudController`, `_spacing` |
+| Constants, `static readonly`, public members, types, methods | `PascalCase` | `MaxLanes`, `ByScore`, `CardCount`, `Fire()` |
+| Locals, parameters | `camelCase` | `lane`, `targetId` |
+| Event handlers | `On<Event>` | `OnRoundEnded`, `OnFireClicked` |
+| Task/Awaitable-returning methods | `Async` suffix | `LoadProfileAsync()` |
+| May-fail lookups | `Try*` with `out` | `TryGetUnit(id, out var unit)` |
+| Bool members | question form | `IsStunned`, `HasInstance`, `CanFire` |
+
+No `s_`/`m_` prefixes, no Hungarian, no type names in identifiers (`_unitList`). Interfaces keep the `I` prefix (and need a justification — see the no-premature-abstraction rule).
 
 ## No one-liner if statements
 
@@ -73,6 +87,7 @@ Do not extract a method whose entire body is a single call to another method wit
 
 ## Agent checklist
 
+- [ ] Names follow the table: `_camelCase` fields, `PascalCase` statics/consts/members, `On*` handlers, `*Async`, `Try*`
 - [ ] No `if (…) statement;` without braces in new or edited code
 - [ ] `private` written explicitly on all private members
 - [ ] Fields declared before properties and methods within each type

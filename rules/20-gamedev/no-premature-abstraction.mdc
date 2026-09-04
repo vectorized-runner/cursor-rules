@@ -11,7 +11,7 @@ Prefer explicit, concrete code over generic frameworks. Abstractions are debt un
 ## Hard rules
 
 - **No interface for a single implementation.** An interface is justified only by 2+ real implementations existing today, or a genuine seam (platform backends, test double for external I/O).
-- **Do not create** `Manager`, `Service`, `Provider`, `Factory`, `Registry`, `Facade`, `Adapter`, or `Strategy` classes unless explicitly requested. Name classes after what they do (`CardDealer`, `WaveSpawner`), not their pattern.
+- **Name classes after the job, not the pattern.** `CardDealer`, `WaveSpawner`, not `CardService` or `SpawnStrategy`. A `Manager`/`Registry` suffix is fine only when the class really owns a lifetime or lookup for many instances (`ResourceManager` owns every catalog asset; `SFXManager` owns every audio source). Never introduce `Service`, `Provider`, `Factory`, `Facade`, `Adapter`, or `Strategy` classes unless explicitly requested.
 - **No dependency injection frameworks.** No containers, no `[Inject]`. Wire dependencies with serialized fields, constructor parameters, or direct references.
 - **Favor direct references over service locators.** `_audio.Play(clip)` via a serialized/constructor ref beats `Services.Get<IAudioService>().Play(clip)`.
 - **Inheritance max 1 level deep** below the framework base class (`MonoBehaviour → Enemy → FlyingEnemy` is the limit). Prefer composition or an enum + switch.
@@ -44,7 +44,7 @@ When you introduce one, say why in one sentence in the change description.
 ## Agent checklist
 
 - [ ] No new interfaces with a single implementation
-- [ ] No new *Manager/*Service/*Provider/*Factory/*Registry/*Facade/*Strategy classes unless requested
+- [ ] Classes named after the job; no new *Service/*Provider/*Factory/*Facade/*Strategy classes unless requested
 - [ ] No DI containers or service locators; direct references used
 - [ ] Inheritance depth ≤ 1 below framework base
 - [ ] Any new abstraction has 3+ usages or an explicit justification

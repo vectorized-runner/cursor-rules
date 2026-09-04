@@ -1,0 +1,68 @@
+---
+description: Editor tooling standards — editor code lives under Editor/ with an editor asmdef; guards fail the build; AssetDatabase edits batched; no import-time side effects; one-off tools deleted
+globs: **/Editor/**/*.cs
+alwaysApply: false
+---
+
+# Editor Tooling
+
+Editor code is exempt from most runtime rules (LINQ, reflection, allocation). It has its own rules, because a bad editor tool breaks every developer's project silently.
+
+## Placement
+
+- Editor code lives under a folder named **`Editor/`** with an **editor-only asmdef** (`includePlatforms: ["Editor"]`). Never `#if UNITY_EDITOR` blocks inside runtime assemblies for anything larger than a `[ContextMenu]` or a gizmo.
+- Namespace follows the project's editor convention (see its `AGENTS.md`).
+
+## Guards fail the build
+
+A guard (rule enforcement script) has two entry points and both are mandatory:
+
+1. **On recompile** (`[InitializeOnLoad]` / `[DidReloadScripts]`): scan and `Debug.LogError` each violation with file path and line so it is clickable.
+2. **On build** (`IPreprocessBuildWithReport`): re-scan and `throw new BuildFailedException(...)` listing every violation. A guard that only logs never stops a bad build.
+
+```csharp
+// ❌ BAD — build proceeds with violations
+public void OnPreprocessBuild(BuildReport report)
+{
+    foreach (var v in Scan()) Debug.LogError(v);
+}
+
+// ✅ GOOD — build stops
+public void OnPreprocessBuild(BuildReport report)
+{
+    var violations = Scan();
+    if (violations.Count > 0)
+    {
+        throw new BuildFailedException($"[MyGuard] {violations.Count} violation(s):\n{string.Join("\n", violations)}");
+    }
+}
+```
+
+- Guards scan **runtime** code only; skip `Editor/` folders and test assemblies unless the rule says otherwise.
+- Grandfather lists are explicit `const string[]` in the guard, only ever shrink, and are never extended to make a build pass (see the legacy-code-policy rule).
+
+## `AssetDatabase` hygiene
+
+- Wrap multi-asset edits in `AssetDatabase.StartAssetEditing()` / `StopAssetEditing()` (in `try`/`finally`) and call `SaveAssets` once at the end — not per asset.
+- Prefer `AssetDatabase.FindAssets("t:MyType")` over `Resources.Load*` / directory walks. Never hardcode project paths in a shared tool; find by type or label.
+- Use `Undo.RecordObject` / `Undo.RegisterCreatedObjectUndo` for anything a user might run by accident.
+
+## No import-time side effects
+
+`[InitializeOnLoad]` and `AssetPostprocessor` run on every domain reload / import for every developer. They may **register** (callbacks, menu items, validators) and **check**; they must not write assets, modify scenes, or reformat files. Anything that mutates is an explicit menu item.
+
+## One-off tools
+
+Migration, batch-fix, and initial-generation scripts are deleted **in the same change** that commits their output (see the no-code-built-ui rule). Recovery is `git revert`, not rerun.
+
+## Menu items
+
+Live under the company or game root (`MonkeyTilt/...`, `<Game>/...`). Agents run them via Unity MCP `execute_menu_item` and read the console — never hand a menu item to the user as a task step.
+
+## Agent checklist
+
+- [ ] Editor code under `Editor/` with an editor-only asmdef
+- [ ] Guards log on recompile **and** throw `BuildFailedException` on build
+- [ ] `AssetDatabase` edits batched; assets found by type, not by hardcoded path
+- [ ] `[InitializeOnLoad]` / postprocessors only register and check, never mutate
+- [ ] One-off tools deleted in the same change as their output

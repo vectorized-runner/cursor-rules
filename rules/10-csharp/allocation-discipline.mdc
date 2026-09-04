@@ -39,13 +39,12 @@ Debug.Log("Count: " + count);                 // int → object via concat
 IComparable c = myStruct;                     // struct → interface
 string.Format("{0}", score);                  // int → object
 
-// ✅ GOOD
-Debug.Log($"Count: {count.ToString()}");      // still allocates the string — keep out of hot paths entirely
-EqualityComparer<MyEnum>.Default.Equals(a, b); // no boxing for enum comparison in generics
+// ✅ GOOD — typed comparison, no object conversion
+if (a == b) { ... }                           // enum == enum compiles to an int compare
 ```
 
-- Never use enums or structs as `Dictionary` keys without an `IEqualityComparer` (default comparer boxes on older runtimes) — or use `int` keys.
 - Don't pass structs through `object`/interface parameters in hot code.
+- A custom struct used as a `Dictionary` key must implement `IEquatable<T>` (and `GetHashCode`) or the default comparer falls back to boxing `Equals(object)`. Enum keys are fine on current Unity runtimes.
 
 ## `params` and strings
 
