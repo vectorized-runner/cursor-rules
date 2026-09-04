@@ -22,7 +22,7 @@ await Awaitable.WaitForSecondsAsync(0.25f, destroyCancellationToken);
 await MainThreadDelay.WaitMillisecondsAsync(500, token);
 ```
 
-Use `MainThreadDelay` (`MonkeyTilt.Foundation`, namespace `MonkeyTilt.Shared`) or `Awaitable.WaitForSecondsAsync` directly. After every `await` in a MonoBehaviour, guard `if (this == null) return`.
+Use `MainThreadDelay` (`MonkeyTilt.Foundation`, namespace `MonkeyTilt.Shared`) or `Awaitable.WaitForSecondsAsync` directly, and pass `destroyCancellationToken` so a pending delay unwinds when the object is destroyed (see the async-and-events rule).
 
 `WebGlThreadingApiGuard` (build preprocess, `MonkeyTilt.Shared.Guards.Editor`) fails WebGL builds when runtime code matches banned threading APIs below.
 

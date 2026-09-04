@@ -39,6 +39,10 @@ private async void OnLoadClicked()  // UI callback boundary
     {
         await LoadProfileAsync();
     }
+    catch (OperationCanceledException)
+    {
+        // destroyed or cancelled mid-load — expected, not an error
+    }
     catch (Exception e)
     {
         Debug.LogException(e);
@@ -50,17 +54,29 @@ private async Task LoadProfileAsync() { ... }
 
 ## Async work must respect object lifetime
 
-Play mode can exit, and objects can be destroyed, while an `await` is pending. After every `await` in a MonoBehaviour, guard before touching Unity state:
+Play mode can exit, and objects can be destroyed, while an `await` is pending. Handle that with cancellation, not with post-await null checks.
+
+Thread the MonoBehaviour's `destroyCancellationToken` through every awaited call. On destruction the pending await throws `OperationCanceledException`, the method unwinds, and no continuation reaches a dead object:
 
 ```csharp
-await FetchAsync();
-if (this == null)
+private async Task RefreshAsync()
 {
-    return;  // destroyed while awaiting — lifecycle guard, silent return is OK here
+    var profile = await FetchAsync(destroyCancellationToken);
+    _nameLabel.text = profile.Name;   // unreachable if destroyed mid-fetch
 }
 ```
 
-Prefer `CancellationToken` (e.g. `destroyCancellationToken`) over ad-hoc flags when available.
+When the awaited API takes no token (a `UnityWebRequest` poll loop, a third-party task), check the token at the yield point instead:
+
+```csharp
+while (!request.isDone)
+{
+    destroyCancellationToken.ThrowIfCancellationRequested();
+    await Task.Yield();
+}
+```
+
+Do **not** write `if (this == null) return` after an await. It is a silent bail on a path that should either cancel or fail loudly: without it, a continuation touching a destroyed object throws `MissingReferenceException` with a stack trace — the fail-fast behaviour every other rule asks for.
 
 ## Events: subscribe and unsubscribe symmetrically
 
@@ -86,6 +102,6 @@ private void OnDisable()
 - [ ] Coroutine for frame-timed visuals, `async` for I/O and value-returning work; not mixed in one flow
 - [ ] No `Task.Run`, `Task.Delay`, or thread-pool APIs
 - [ ] No `async void` except top-level Unity/UI callback adapters with try/catch
-- [ ] Every `await` in a MonoBehaviour followed by lifetime guard or cancellation token
+- [ ] `destroyCancellationToken` threaded through awaits in MonoBehaviours; no `this == null` guards after await
 - [ ] Every subscribe has a symmetric unsubscribe; no lambda subscriptions
 - [ ] New static events registered in the static-reset hub

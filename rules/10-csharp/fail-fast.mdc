@@ -33,7 +33,7 @@ Use a consistent prefix: `[ClassName] MethodName — reason`, with useful contex
 | **Error** | Required for this code path; skipping means wrong state, lost event, or broken feature |
 | **Warning** | Unexpected but recoverable, or possibly optional |
 
-Silent return is OK only for: intentional control flow (debounce, dedup, idempotent guards), lifecycle (`this == null` after async, teardown), legitimately optional fields, and explicit product choices.
+Silent return is OK only for: intentional control flow (debounce, dedup, idempotent guards), teardown, legitimately optional fields, and explicit product choices. Objects destroyed mid-`await` are handled by cancellation, not a silent return — see the async-and-events rule.
 
 ## Producers: never return null to signal failure
 

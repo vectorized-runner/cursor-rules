@@ -97,7 +97,6 @@ Express it in the API — do not use a plain reference type plus a silent null c
 
 ## Allowed exceptions (narrow)
 
-- **Lifecycle**: `if (this == null) return` after `await` (object destroyed mid-async)
 - **Legitimately optional serialized fields** checked once in `Awake`, not in every method
 - **`TryGetComponent` / lookup APIs** where absence is the expected outcome (see component-access rule)
 
